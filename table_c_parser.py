@@ -69,6 +69,21 @@ class NetUpdateRecord:
             lines.append(f"      Offset 0x{self.offset+12+offset:04x}: {hex_str}")
         return "\n".join(lines)
 @dataclass
+class PropertyValueRecord:
+    offset: int; size: int; data: bytes; property_value_id: int
+    def __str__(self):
+        header = f"[IDENTIFIED: Property Value Record at {self.offset:#06x} | Size: {self.size} bytes]\n"
+        header += f"  - Property Value ID: {format_int(self.property_value_id)}\n"
+        header += "  - This ID references a property value (e.g., resistance value)\n"
+        header += "  - Full content (summarized as 32-bit integers):\n"
+        num_integers = len(self.data) // 4
+        for i in range(num_integers):
+            val = struct.unpack('<I', self.data[i*4:i*4+4])[0]
+            marker = " <-- Property Value ID" if (i*4 == self.property_value_id) or (self.data[i*4:i*4+4] == struct.pack('<I', self.property_value_id)) else ""
+            header += f"    - Index[{i:03d}]: {format_int(val)}{marker}\n"
+        return header.strip()
+
+@dataclass
 class GenericRecord:
     offset: int; size: int; data: bytes
     def __str__(self):
@@ -141,6 +156,11 @@ class HypothesisParser:
                 offset=original_record.offset,
                 timestamp_val=original_record.value
             )
+        
+        # --- PASS 3: Identify property value references ---
+        # Based on analysis of sch4.oa vs sch5.oa, certain patterns indicate property values
+        # We look for GenericRecords that might contain property value IDs
+        self._annotate_property_values()
 
     # --- Individual parsing methods ---
     def _try_parse_separator_block(self, c) -> bool:
@@ -193,3 +213,53 @@ class HypothesisParser:
             self.records.append(GenericRecord(c, size, self.data[c:end]))
             return True
         return False
+
+    def _annotate_property_values(self):
+        """
+        Post-processing pass to identify and annotate property value references.
+        
+        Based on analysis of sch4.oa vs sch5.oa diffs, we know that certain
+        GenericRecords contain property value IDs (like resistance values).
+        
+        Patterns observed:
+        - Property value IDs appear in specific structural contexts
+        - They are typically small integers (< 256) that represent indices
+        - They appear in records with specific marker patterns (like 0xc8000000)
+        
+        This is a heuristic approach that looks for known patterns.
+        """
+        for i, record in enumerate(self.records):
+            if not isinstance(record, GenericRecord):
+                continue
+            
+            # Look for property value patterns in the data
+            # Pattern: sequences with 0xc8000000 followed by small value patterns
+            num_ints = len(record.data) // 4
+            for j in range(num_ints):
+                if j * 4 + 4 > len(record.data):
+                    break
+                val = struct.unpack_from('<I', record.data, j * 4)[0]
+                
+                # Check if this looks like a property value ID:
+                # - Small value (likely an index, 0 < val < 256)
+                # - Preceded by specific markers
+                if 20 < val < 200:  # Reasonable range for property value IDs
+                    # Check context: look for 0xc8000000 or pattern markers nearby
+                    has_marker = False
+                    for k in range(max(0, j-3), min(num_ints, j+3)):
+                        if k * 4 + 4 <= len(record.data):
+                            context_val = struct.unpack_from('<I', record.data, k * 4)[0]
+                            if context_val in [0xc8000000, 0x00000001, 0x00000002]:
+                                has_marker = True
+                                break
+                    
+                    # If we found a likely property value ID, annotate it
+                    if has_marker:
+                        # Replace the GenericRecord with a PropertyValueRecord
+                        self.records[i] = PropertyValueRecord(
+                            offset=record.offset,
+                            size=record.size,
+                            data=record.data,
+                            property_value_id=val
+                        )
+                        break  # Only annotate once per record
