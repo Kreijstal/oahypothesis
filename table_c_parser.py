@@ -77,10 +77,38 @@ class PropertyValueRecord:
         header += "  - This ID references a property value (e.g., resistance value)\n"
         header += "  - Full content (summarized as 32-bit integers):\n"
         num_integers = len(self.data) // 4
-        for i in range(num_integers):
-            val = struct.unpack('<I', self.data[i*4:i*4+4])[0]
-            marker = " <-- Property Value ID" if (i*4 == self.property_value_id) or (self.data[i*4:i*4+4] == struct.pack('<I', self.property_value_id)) else ""
-            header += f"    - Index[{i:03d}]: {format_int(val)}{marker}\n"
+        if num_integers == 0:
+            header += "    (No 32-bit integer data to display)"
+            return header.strip()
+        
+        # Helper function to check if an index needs a marker
+        def needs_marker(idx):
+            val = struct.unpack('<I', self.data[idx*4:idx*4+4])[0]
+            return (idx*4 == self.property_value_id) or (val == self.property_value_id)
+        
+        # Build array of all values and which ones have markers
+        values = [struct.unpack('<I', self.data[i*4:i*4+4])[0] for i in range(num_integers)]
+        markers = [needs_marker(i) for i in range(num_integers)]
+        
+        # Process the array, summarizing consecutive runs but breaking at marker boundaries
+        i = 0
+        while i < num_integers:
+            # Find the end of the current run (same value, same marker status)
+            j = i + 1
+            while j < num_integers and values[j] == values[i] and markers[j] == markers[i]:
+                j += 1
+            
+            # Output this run
+            count = j - i
+            marker_str = " <-- Property Value ID" if markers[i] else ""
+            header += f"    - Index[{i:03d}]: {format_int(values[i])}{marker_str}"
+            if count > 1:
+                header += f" (repeats {count} times)\n"
+            else:
+                header += "\n"
+            
+            i = j
+        
         return header.strip()
 
 @dataclass
