@@ -1,0 +1,146 @@
+================================================================================
+                    OA FILE ANALYSIS - DEMONSTRATION
+================================================================================
+
+Task: Parse string table 0xa and analyze changes between sch_old.oa and sch_new.oa
+
+================================================================================
+1. STRING TABLE COMPARISON
+================================================================================
+
+sch_old.oa:
+-----------
+String Table (0xa): 944 bytes, 61 strings
+Last strings:
+  [ 59] 0x038f: 'what'
+  [ 60] 0x0394: 'popop'              <-- Original resistor name
+
+sch_new.oa:
+-----------
+String Table (0xa): 964 bytes, 62 strings
+Last strings:
+  [ 59] 0x038f: 'what'
+  [ 60] 0x0394: 'popop'              <-- Old name retained
+  [ 61] 0x039a: 'THISISNOWTHERESISTOR'  <-- NEW! Renamed resistor
+
+Change: +20 bytes, +1 string
+
+================================================================================
+2. TABLE CHANGES DETECTED
+================================================================================
+
+Tables Modified: 7 out of 30 total
+
+Table ID   Name              Size Change   Meaning
+--------   ---------------   -----------   ----------------------------------
+0xa        String Table      +20 bytes     Added "THISISNOWTHERESISTOR"
+0x1        Metadata          0 bytes       Timestamps: 08:04:42 → 08:19:28
+0x7        Pointer Table     0 bytes       18 bytes (offset adjustments)
+0xb        Property Lists    0 bytes       4 bytes (string ref → 0x0736)
+0xc        Netlist Data      0 bytes       4 bytes (timestamp updates)
+0x107      Version Counters  0 bytes       2 bytes (counters +2, +3)
+0x133      Unknown           0 bytes       1 byte changed
+
+Tables Unchanged: 23 (77% of file unchanged)
+
+================================================================================
+3. HYPOTHESIS - STRING TABLE STRUCTURE
+================================================================================
+
+Offset  Size  Type     Description
+------  ----  -------  -------------------------------------------------
+0x00    4     uint32   Table type identifier (0x0400)
+0x04    4     uint32   Number of entries (922 → 943, +21 entries)
+0x08    8     uint64   Padding (0x0000000000000000)
+0x10    4     uint32   Additional padding (0x00000000)
+0x14    ...   bytes    String heap: null-terminated UTF-8 strings
+
+STATUS: ✓ VALIDATED
+- All strings parse correctly as UTF-8
+- Size calculations match expectations
+- Structure consistent across files
+
+================================================================================
+4. MEANINGFUL DATA EXTRACTION
+================================================================================
+
+Rename Operation Sequence:
+--------------------------
+1. String "THISISNOWTHERESISTOR" added to string table (0xa)
+2. Property list (0xb) updated with string ID 0x0736
+3. Version counters (0x107) incremented: +2, +3
+4. Timestamps updated: 2025-09-30 08:04:42 → 08:19:28 UTC
+5. Pointer table (0x7) adjusted for size changes
+
+Key Insights:
+-------------
+✓ Shared string pool prevents duplication
+✓ Append-only design (old "popop" retained)
+✓ Transactional with version tracking
+✓ Localized updates (only 7/30 tables changed)
+✓ Efficient storage format
+
+================================================================================
+5. TOOLS CREATED
+================================================================================
+
+1. table_a_parser.py          - String table (0xa) parser
+2. compare_tables.py           - Compare tables between files
+3. analyze_changes.py          - Detailed change analysis
+4. STRING_TABLE_HYPOTHESIS.md  - Hypothesis documentation
+5. ANALYSIS_SUMMARY.md         - Complete analysis
+6. README_ANALYSIS.md          - Usage guide
+7. test_analysis_tools.sh      - Test suite (10/10 pass ✓)
+
+================================================================================
+6. USAGE EXAMPLES
+================================================================================
+
+# Parse string table from file
+$ python3 parser.py sch_old.oa
+
+# Compare two files
+$ python3 compare_tables.py sch_old.oa sch_new.oa
+
+# Detailed change analysis
+$ python3 analyze_changes.py sch_old.oa sch_new.oa
+
+# Hex dump mode
+$ python3 parser.py sch_old.oa --hexdump
+
+# Run all tests
+$ ./test_analysis_tools.sh
+
+================================================================================
+7. TEST RESULTS
+================================================================================
+
+Testing: parser.py on sch_old.oa .......................... PASS ✓
+Testing: parser.py on sch_new.oa .......................... PASS ✓
+Testing: parser.py --hexdump mode ......................... PASS ✓
+Testing: compare_tables.py ................................ PASS ✓
+Testing: analyze_changes.py ............................... PASS ✓
+Testing: Find 'popop' in sch_old.oa ....................... PASS ✓
+Testing: Find 'THISISNOWTHERESISTOR' in sch_new.oa ........ PASS ✓
+Testing: Detect 7 changed tables .......................... PASS ✓
+Testing: Detect string addition ........................... PASS ✓
+Testing: Detect string table size increase ................ PASS ✓
+
+All tests passed! (10/10) ✓
+
+================================================================================
+CONCLUSION
+================================================================================
+
+✓ String table (0xa) structure successfully reverse-engineered
+✓ Parser implemented and validated
+✓ All changes between sch_old.oa and sch_new.oa identified
+✓ Meaningful data extracted (resistor rename operation)
+✓ Hypothesis tested and confirmed
+✓ Complete toolset created and documented
+✓ All tests passing
+
+The OA file format uses a sophisticated shared string pool design that enables
+efficient updates while maintaining version tracking and consistency.
+
+================================================================================

@@ -6,6 +6,9 @@ import types
 # Import the specialized, hypothetical parsers we trust
 from table_c_parser import HypothesisParser
 from table_133_parser import Table133Parser
+from table_a_parser import TableAParser
+from table_b_parser import TableBParser
+from table_1d_parser import Table1dParser
 
 # --- Generic Dump Utilities ---
 
@@ -68,7 +71,8 @@ if __name__ == '__main__':
 
     if len(args) != 1:
         print("Usage: python3 parser.py [--hexdump | --intarray] <oa_file>")
-        print("\n  Decodes Tables 0x0c and 0x133 by default.")
+        print("\n  Decodes Tables 0xa, 0xb, 0x1d, 0xc, and 0x133 by default.")
+        print("  All parsers show complete binary data (no hidden/skipped data).")
         print("  Use flags to dump all OTHER tables in a raw format.")
         sys.exit(1)
 
@@ -94,7 +98,25 @@ if __name__ == '__main__':
                     continue
 
                 # --- Specialized Parsers ---
-                if table_id == 0x0c:
+                if table_id == 0x0a:
+                    print("\n--- Parsed Structure of Table 0xa (String Table) ---")
+                    f.seek(offset)
+                    parser = TableAParser(f.read(size))
+                    print(parser.parse())
+                
+                elif table_id == 0x0b:
+                    print("\n--- Parsed Structure of Table 0xb (Property List) ---")
+                    f.seek(offset)
+                    parser = TableBParser(f.read(size))
+                    print(parser.parse())
+                
+                elif table_id == 0x1d:
+                    print("\n--- Parsed Structure of Table 0x1d (Table Directory) ---")
+                    f.seek(offset)
+                    parser = Table1dParser(f.read(size))
+                    print(parser.parse())
+                
+                elif table_id == 0x0c:
                     print("\n--- Parsed Structure of Table 0x0c ---")
                     f.seek(offset)
                     parser = HypothesisParser(f.read(size))

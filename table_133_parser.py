@@ -1,3 +1,4 @@
+
 # table_133_parser.py (Corrected Version 3 - Full Data Dump)
 import struct
 from dataclasses import dataclass, field
@@ -136,3 +137,4 @@ class Table133Parser:
                 self.parsed_data.found_counter = arr[i+1]
                 self.parsed_data.counter_found = True
                 return
+
