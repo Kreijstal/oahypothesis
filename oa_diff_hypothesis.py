@@ -2,6 +2,9 @@ import struct
 import sys
 import difflib
 
+# Import the intelligent parser for Table 0xc
+from table_c_parser import HypothesisParser
+
 # Helper function to format data into a hex view similar to `xxd`
 def hex_dump(data, prefix=''):
     """Creates a formatted hex dump of a byte string."""
@@ -40,12 +43,19 @@ class OaFile:
                     f.seek(info['offset'])
                     info['data'] = f.read(info['size'])
 
+        except FileNotFoundError:
+            print(f"Error: File not found at {filepath}", file=sys.stderr)
+            sys.exit(1)
         except Exception as e:
             print(f"Error parsing {filepath}: {e}", file=sys.stderr)
             sys.exit(1)
 
 def diff_oa_tables(file_old_path, file_new_path):
-    """Compares and diffs the tables of two .oa files."""
+    """
+    Compares the tables of two .oa files. For Table 0xc, it performs a
+    structured, semantic diff. For all other tables, it performs a
+    standard hex-level diff.
+    """
     print(f"--- Comparing {file_old_path} (OLD) with {file_new_path} (NEW) ---\n")
     oa_old = OaFile(file_old_path)
     oa_new = OaFile(file_new_path)
@@ -72,7 +82,6 @@ def diff_oa_tables(file_old_path, file_new_path):
         print(f"  Metadata OLD: Offset={old_offset}, Size={old_size}")
         print(f"  Metadata NEW: Offset={new_offset}, Size={new_size}\n")
 
-        # Get data for diffing
         data_old = table_old.get('data', b'') if table_old else b''
         data_new = table_new.get('data', b'') if table_new else b''
 
@@ -80,7 +89,31 @@ def diff_oa_tables(file_old_path, file_new_path):
             print("  NOTE: Table data is identical, only offset/size metadata changed.\n")
             continue
 
-        # Generate and print the side-by-side hex diff
+        # --- SPECIALIZED DIFF FOR TABLE 0xc ---
+        if table_id == 0xc:
+            print("  --- Structured Diff for Table 0xc (Netlist Data) ---")
+            parser_old = HypothesisParser(data_old)
+            parser_old.parse()
+            lines_old = [str(r) for r in parser_old.records]
+
+            parser_new = HypothesisParser(data_new)
+            parser_new.parse()
+            lines_new = [str(r) for r in parser_new.records]
+
+            diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
+            
+            # Print the resulting structured diff
+            diff_lines = list(diff)[2:] # Skip the ---/+++ file headers
+            if not diff_lines:
+                 print("  NOTE: Parsed structure is identical, but raw byte-level differences may exist.")
+            else:
+                for line in diff_lines:
+                    # Add extra indentation to fit our report format
+                    print(f"  {line}")
+            print("\n")
+            continue # Skip the generic hex diff for this table
+
+        # --- GENERIC HEX DIFF FOR ALL OTHER TABLES ---
         dump_old = hex_dump(data_old)
         dump_new = hex_dump(data_new)
 
