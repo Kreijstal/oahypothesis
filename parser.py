@@ -1,51 +1,123 @@
-# parser.py
+# parser.py (Focused Tool Version)
 import sys
+import struct
 import types
-from oaparser_base import MyParser
+
+# Import the specialized, hypothetical parsers we trust
 from table_c_parser import HypothesisParser
+from table_133_parser import Table133Parser
 
-def on_parsed_table_c(self, records):
-    """
-    This will be our new callback method. It prints the structured results
-    from the HypothesisParser.
-    """
-    print("\n--- Hypothesis Parse of Table 0x0c ---")
-    if not records:
-        print("  (No records parsed or parser failed)")
-        return
-    for record in records:
-        print(record)
+# --- Generic Dump Utilities ---
 
-def _read_0x0c(self, file, pos, tbl_size):
-    """
-    This is our new handler function for Table 0xc. It matches the signature
-    expected by the OaFileParser's table_map.
-    """
-    file.seek(pos)
-    table_c_data = file.read(tbl_size)
+def generate_hex_dump(data: bytes, table_id: int):
+    """Creates a complete, formatted hex dump for a given table's data."""
+    header = f"--- Hex Dump for Table 0x{table_id:x} (Size: {len(data)} bytes) ---"
+    lines = [header]
+    for i in range(0, len(data), 16):
+        chunk = data[i:i+16]
+        hex_part = ' '.join(f'{b:02x}' for b in chunk)
+        ascii_part = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in chunk)
+        lines.append(f"  {i:08x}: {hex_part:<48} |{ascii_part}|")
+    return "\n".join(lines)
 
-    c_parser = HypothesisParser(table_c_data)
-    c_parser.parse()
+def generate_int_array_dump(data: bytes, table_id: int):
+    """
+    Treats the table's data as a flat int32 array and produces a summarized dump.
+    """
+    header = f"--- int32[] Dump for Table 0x{table_id:x} (Size: {len(data)} bytes) ---"
+    lines = [header]
 
-    # Call the callback method we attached to the instance.
-    self.on_parsed_table_c(c_parser.records)
+    # Pad data with nulls if it's not a multiple of 4 bytes
+    padding = len(data) % 4
+    if padding != 0:
+        data += b'\x00' * (4 - padding)
+
+    if not data:
+        lines.append("  - (Table is empty)")
+        return "\n".join(lines)
+
+    int_array = [struct.unpack_from('<I', data, i)[0] for i in range(0, len(data), 4)]
+
+    last_num, repeat_count, start_index = None, 0, 0
+    for i, num in enumerate(int_array):
+        if num == last_num:
+            repeat_count += 1
+        else:
+            if last_num is not None:
+                lines.append(f"  - Index[{start_index:03d}]: {last_num} (0x{last_num:x})")
+                if repeat_count > 1: lines.append(f"      (Repeats {repeat_count} times)")
+            last_num, repeat_count, start_index = num, 1, i
+    if last_num is not None:
+        lines.append(f"  - Index[{start_index:03d}]: {last_num} (0x{last_num:x})")
+        if repeat_count > 1: lines.append(f"      (Repeats {repeat_count} times)")
+
+    return "\n".join(lines)
+
+
+# --- Main Execution ---
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print(f"Usage: python3 {sys.argv[0]} <oa_file>")
+    args = sys.argv[1:]
+
+    # --- Argument Parsing ---
+    dump_hex = '--hexdump' in args
+    if dump_hex: args.remove('--hexdump')
+
+    dump_int = '--intarray' in args
+    if dump_int: args.remove('--intarray')
+
+    if len(args) != 1:
+        print("Usage: python3 parser.py [--hexdump | --intarray] <oa_file>")
+        print("\n  Decodes Tables 0x0c and 0x133 by default.")
+        print("  Use flags to dump all OTHER tables in a raw format.")
         sys.exit(1)
 
-    # 1. Create an instance of the standard parser.
-    #    It already knows how to parse and print all the original tables.
-    parser = MyParser()
+    filepath = args[0]
+    print(f"--- Running Focused Parser on: {filepath} ---")
 
-    # 2. Dynamically "monkey-patch" the new callback method onto the INSTANCE.
-    #    This binds the function to the instance, giving it access to 'self'.
-    parser.on_parsed_table_c = types.MethodType(on_parsed_table_c, parser)
+    try:
+        with open(filepath, 'rb') as f:
+            # Read header and table directory
+            header = f.read(24)
+            _, _, _, _, _, used = struct.unpack('<IHHQII', header)
+            ids = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
+            offsets = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
+            sizes = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
 
-    # 3. Register our new handler in the instance's table_map.
-    #    This tells the main parse loop to call our function when it sees table 0xc.
-    parser.table_map[0x0c] = types.MethodType(_read_0x0c, parser)
+            # --- Main Dispatch Loop ---
+            for i in range(used):
+                table_id = ids[i]
+                offset = offsets[i]
+                size = sizes[i]
 
-    # 4. Run the parser. It will now execute all original handlers PLUS our new one.
-    parser.parse(sys.argv[1])
+                if offset == 0xffffffffffffffff or size == 0:
+                    continue
+
+                # --- Specialized Parsers ---
+                if table_id == 0x0c:
+                    print("\n--- Parsed Structure of Table 0x0c ---")
+                    f.seek(offset)
+                    parser = HypothesisParser(f.read(size))
+                    parser.parse()
+                    for record in parser.records:
+                        print(record)
+
+                elif table_id == 0x133:
+                    print("\n--- Parsed Structure of Table 0x133 ---")
+                    f.seek(offset)
+                    parser = Table133Parser(f.read(size))
+                    print(parser.parse())
+
+                # --- Generic Dumpers (if flags are used) ---
+                elif dump_hex:
+                    f.seek(offset)
+                    print("\n" + generate_hex_dump(f.read(size), table_id))
+
+                elif dump_int:
+                    f.seek(offset)
+                    print("\n" + generate_int_array_dump(f.read(size), table_id))
+
+    except FileNotFoundError:
+        print(f"ERROR: File not found at '{filepath}'")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
