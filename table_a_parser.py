@@ -24,8 +24,35 @@ class TableAParser:
         if len(self.data) < 20:
             return f"String Table: Too small ({len(self.data)} bytes)"
         
+        # Format the output
+        lines = [f"String Table (0xa): {len(self.data)} bytes"]
+        lines.append("="*80)
+        
+        # Show the 20-byte header in binary format
+        lines.append("\nHeader (20 bytes):")
+        header_data = self.data[:20]
+        for i in range(0, 20, 16):
+            chunk = header_data[i:i+16]
+            hex_part = ' '.join(f'{b:02x}' for b in chunk)
+            ascii_part = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in chunk)
+            lines.append(f"  {i:04x}: {hex_part:<48} |{ascii_part}|")
+        
+        # Parse header fields
+        if len(self.data) >= 16:
+            type_id, num_entries, pad1, pad2 = struct.unpack('<IIII', self.data[:16])
+            lines.append(f"\n  Type ID: 0x{type_id:08x}")
+            lines.append(f"  Number of entries: {num_entries} (0x{num_entries:x})")
+            lines.append(f"  Padding1: 0x{pad1:08x}")
+            lines.append(f"  Padding2: 0x{pad2:08x}")
+            if len(self.data) >= 20:
+                extra_pad = struct.unpack('<I', self.data[16:20])[0]
+                lines.append(f"  Extra padding: 0x{extra_pad:08x}")
+        
         # Skip the 20-byte header (16 bytes table info + 4 bytes padding)
         string_buffer = self.data[20:]
+        
+        lines.append(f"\nString Data ({len(string_buffer)} bytes):")
+        lines.append("-"*80)
         
         # Extract all null-terminated strings
         current_offset = 0
@@ -55,27 +82,11 @@ class TableAParser:
             
             current_offset = null_pos + 1
         
-        # Format the output
-        lines = [f"String Table (0xa): {len(self.data)} bytes, {len(self.strings)} strings"]
-        lines.append("="*80)
+        lines.append(f"Total strings found: {len(self.strings)}")
+        lines.append("")
         
-        # Show first 10 and last 10 strings
-        show_count = 10
-        if len(self.strings) <= show_count * 2:
-            # Show all strings if there are few
-            for i, entry in enumerate(self.strings):
-                lines.append(f"  [{i:3d}] 0x{entry['offset']:04x}: '{entry['string']}'")
-        else:
-            # Show first 10
-            for i in range(show_count):
-                entry = self.strings[i]
-                lines.append(f"  [{i:3d}] 0x{entry['offset']:04x}: '{entry['string']}'")
-            
-            lines.append(f"  ... ({len(self.strings) - 2*show_count} strings omitted) ...")
-            
-            # Show last 10
-            for i in range(len(self.strings) - show_count, len(self.strings)):
-                entry = self.strings[i]
-                lines.append(f"  [{i:3d}] 0x{entry['offset']:04x}: '{entry['string']}'")
+        # Show ALL strings (no skipping)
+        for i, entry in enumerate(self.strings):
+            lines.append(f"  [{i:3d}] 0x{entry['offset']:04x}: '{entry['string']}'")
         
         return "\n".join(lines)
