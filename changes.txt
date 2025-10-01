@@ -1,0 +1,40 @@
+Of course. Based on the diffs and our entire investigation, here is the clear, chronological summary of what change was made to produce each `.oa` file in your directory.
+
+This is the story of our reverse-engineering journey.
+
+### The History of Changes
+
+1.  **`sch_old.oa`**
+    *   **Change:** This was the starting point. A simple schematic containing at least a resistor (`R0`), a VDC source (`V0`), and a ground (`I0`). The resistor's name was **`popop`**.
+
+2.  **`sch_new.oa`**
+    *   **Change:** The resistor `R0` was renamed from `popop` to **`THISISNOWTHERESISTOR`**.
+    *   **Evidence:** The string table grew to include the new name. The core object version counters in Table `0x107` were incremented. This was our first clue about the file's transactional nature.
+
+3.  **`sch2.oa`**
+    *   **Change:** The file was **saved without any edits**.
+    *   **Evidence:** The diff between `sch_new.oa` and `sch2.oa` showed that only the global metadata tables (`0x1` and `0xc`) changed. The timestamps and save counters were updated, but no object-specific logs were touched. This proved we could separate a "save" from an "edit."
+
+4.  **`sch3.oa`**
+    *   **Change:** The resistor was renamed for a second time, from `THISISNOWTHERESISTOR` to **`THISISNOWTHERESISTOR2`**.
+    *   **Evidence:** The diff pattern was identical to the first rename: the string table grew, a new property ID was appended in Table `0xb`, and the *same* version counter for the resistor in Table `0x107` was incremented again. This confirmed our understanding of the rename process.
+
+5.  **`sch4.oa`**
+    *   **Change:** A different component, the VDC source (`V0`), was renamed from `what` to **`THISISNOWTHERESISTOR3`**.
+    *   **Evidence:** This was a crucial trick. The string table grew as expected, but the diff of Table `0x107` showed that the resistor's version counter **did not change**. Instead, a *different* counter in a different record was incremented. This proved that Table `0x107` contains separate records for each component instance.
+
+6.  **`sch5.oa`**
+    *   **Change:** The resistor's (`R0`) resistance value was set to **`2K`**.
+    *   **Evidence:** This produced a unique diff. The strings `"r"` and `"2K"` were added, but Table `0xb` (Property Lists) did not change, indicating a modification of an existing property, not the addition of a new one. Crucially, this caused major changes to **Table `0xc`**, allowing us to identify it as the core **Netlist Data Table**.
+
+7.  **`sch6.oa`**
+    *   **Change:** The original resistor (`R0`) was converted into a **capacitor (`C0`)**.
+    *   **Evidence:** The diff was very "noisy," showing both additions (capacitor strings) and modifications to many tables. This was a complex "delete + create" operation and confirmed that **Table `0x105`** is the master **Component Instance Table** because it was heavily modified.
+
+8.  **`sch7.oa`**
+    *   **Change:** A **new, unconnected resistor (`R1`)** was added to the schematic.
+    *   **Evidence:** This was a clean "create" operation. It proved that the system reuses existing strings (like `"resistor"`). Most importantly, it created two **new tables (`0x114` and `0x116`)** to manage the new floating nets and pins, and it added warning strings about them to Table `0xa`. This was the breakthrough that identified the connectivity tables.
+
+9.  **`sch8.oa`**
+    *   **Change:** You **drew a wire** connecting one pin of the new resistor (`R1`) to an existing net (`net1`).
+    *   **Evidence:** The most dramatic change. Tables `0x114` and `0x116` were **deleted**. The warning strings were removed from Table `0xa`. And the core connectivity "join" tables (`0xc`, `0xe`, `0x101`, etc.) were heavily rewritten. This proved that making a connection is a major database restructuring event.
