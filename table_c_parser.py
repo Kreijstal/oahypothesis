@@ -55,24 +55,23 @@ class TableHeader:
                 f"  - Content: Found {len(self.internal_pointers)} 64-bit pointers in this section.")
 
 @dataclass
-class PropertyRecord:
+class ComponentRecord:
     """
-    Represents a property assignment record. Based on analysis, this links
-    a component to a property and its value using their string table indices.
+    Represents a component's data block in the netlist. This contains a list
+    of indices pointing to property values in the string table.
     """
     offset: int
     size: int
-    record_type: int
-    component_name_idx: int
-    property_name_idx: int
-    property_value_idx: int
+    component_index: int
+    property_value_indices: List[int]
 
     def __str__(self) -> str:
-        return (f"[ANALYTICAL PARSE: Property Record at {self.offset:#06x} | Size: {self.size} bytes]\n"
-                f"  - Record Type ID: {format_int(self.record_type)}\n"
-                f"  - Component Name Index -> {format_int(self.component_name_idx)}\n"
-                f"  - Property Name Index  -> {format_int(self.property_name_idx)}\n"
-                f"  - Property Value Index -> {format_int(self.property_value_idx)}")
+        lines = [f"[ANALYTICAL PARSE: Component Record at {self.offset:#06x} | Size: {self.size} bytes]"]
+        lines.append(f"  - Component Index: {format_int(self.component_index)} (e.g., 'R0')")
+        lines.append(f"  - Property Value Indices:")
+        for i, val_idx in enumerate(self.property_value_indices):
+            lines.append(f"    - Prop[{i}]: Index -> {format_int(val_idx)}")
+        return "\n".join(lines)
 
 @dataclass
 class GenericRecord:
@@ -82,36 +81,12 @@ class GenericRecord:
     data: bytes
 
     def __str__(self) -> str:
-        # Summarize the generic record as a list of 32-bit integers
-        header = f"[HYPOTHESIS: Generic Record at {self.offset:#06x} | Size: {self.size} bytes]\n"
-        header += "  - Content (summarized as 32-bit integers):\n"
-
-        num_integers = len(self.data) // 4
-        if num_integers == 0:
-            return header.strip() + "\n    (No 32-bit integer data to display)"
-
-        # Group repeating integers for cleaner output
-        last_value = struct.unpack_from('<I', self.data, 0)[0]
-        repeat_count = 1
-        for i in range(1, num_integers):
-            current_value = struct.unpack_from('<I', self.data, i * 4)[0]
-            if current_value == last_value:
-                repeat_count += 1
-            else:
-                start_index = i - repeat_count
-                header += f"    - Index[{start_index:03d}]: {format_int(last_value)}"
-                header += f" (repeats {repeat_count} times)\n" if repeat_count > 1 else "\n"
-                last_value, repeat_count = current_value, 1
-
-        start_index = num_integers - repeat_count
-        header += f"    - Index[{start_index:03d}]: {format_int(last_value)}"
-        header += f" (repeats {repeat_count} times)\n" if repeat_count > 1 else "\n"
-
-        return header.strip()
+        header = f"[HYPOTHESIS: Generic Record at {self.offset:#06x} | Size: {self.size} bytes]"
+        return header
 
 # --- The Main Parser for Table 0xc ---
 
-AnyRecord = Union[TimestampRecord, SeparatorRecord, TableHeader, PropertyRecord, GenericRecord]
+AnyRecord = Union[TimestampRecord, SeparatorRecord, TableHeader, ComponentRecord, GenericRecord]
 
 class HypothesisParser:
     def __init__(self, data: bytes):
@@ -119,15 +94,9 @@ class HypothesisParser:
         self.records: List[AnyRecord] = []
 
     def parse(self):
-        """
-        Parses Table 0xc using a two-pass approach.
-        1. First Pass: Greedily identify all known record structures.
-        2. Second Pass: Analyze the collected records to find the final timestamp.
-        """
-        if not self.data:
-            return
+        if not self.data: return
 
-        # --- PASS 1: Greedily parse all known structures ---
+        # Pass 1: Greedily parse known structures
         cursor = 0
         try:
             if self._try_parse_header(cursor):
@@ -135,28 +104,24 @@ class HypothesisParser:
 
             while cursor < len(self.data):
                 initial_cursor = cursor
-                # Try parsing each known record type in order of precedence
                 if self._try_parse_separator_block(cursor):
                     cursor += 16
-                elif self._try_parse_property_record(cursor):
+                elif self._try_parse_component_record(cursor):
                     cursor += self.records[-1].size
                 else:
-                    # Fallback to a generic record if no specific type matches
                     if self._try_parse_generic(cursor):
                         cursor += self.records[-1].size
 
-                if cursor == initial_cursor:
-                    break # Avoid infinite loops
+                if cursor == initial_cursor: break
         except Exception:
-            pass # Parsing is best-effort
+            pass
 
-        # --- PASS 2: Find and promote the final timestamp ---
+        # Pass 2: Identify and promote the final timestamp
         last_ts_candidate_index = -1
         for i, record in enumerate(self.records):
             if isinstance(record, SeparatorRecord):
                 try:
-                    # A plausible timestamp is a large integer corresponding to a recent date
-                    if (record.value & 0xFFFFFFFF) > 946684800: # After year 2000
+                    if (record.value & 0xFFFFFFFF) > 946684800:
                         datetime.datetime.utcfromtimestamp(record.value & 0xFFFFFFFF)
                         last_ts_candidate_index = i
                 except (ValueError, OSError):
@@ -169,13 +134,9 @@ class HypothesisParser:
                 timestamp_val=original_record.value
             )
 
-    # --- Individual Parsing Functions ---
-
     def _try_parse_header(self, c: int) -> bool:
-        """Parses the main table header."""
         if c + 24 > len(self.data): return False
-        header_id = struct.unpack_from('<I', self.data, c)[0]
-        end_offset = struct.unpack_from('<I', self.data, c + 8)[0]
+        header_id, end_offset = struct.unpack_from('<II', self.data, c)[0], struct.unpack_from('<I', self.data, c + 8)[0]
         if header_id == 4 and end_offset < len(self.data):
             pointers = [struct.unpack_from('<Q', self.data, i)[0] for i in range(8, end_offset, 8)]
             self.records.append(TableHeader(header_id, end_offset, pointers))
@@ -183,7 +144,6 @@ class HypothesisParser:
         return False
 
     def _try_parse_separator_block(self, c: int) -> bool:
-        """Parses a 16-byte separator block (starts with 0xffffffff)."""
         if c + 16 > len(self.data): return False
         if struct.unpack_from('<I', self.data, c)[0] == 0xffffffff:
             value = struct.unpack_from('<Q', self.data, c + 8)[0]
@@ -191,37 +151,40 @@ class HypothesisParser:
             return True
         return False
 
-    def _try_parse_property_record(self, c: int) -> bool:
-        """
-        Identifies and parses a property record based on the structure we
-        discovered: Type ID 19, followed by component, name, and value indices.
-        """
-        # This record structure is a hypothesis based on analyzing the R0 -> 2K change.
-        # It appears to be a 20-byte structure.
-        if c + 20 > len(self.data): return False
+    def _try_parse_component_record(self, c: int) -> bool:
+        # A component record starts with its own string index as a 2-byte int.
+        if c + 4 > len(self.data): return False
+        comp_idx = struct.unpack_from('<H', self.data, c)[0]
 
-        record_type, _, _, name_idx, val_idx = struct.unpack_from('<IIHHH', self.data, c)
-        comp_idx = struct.unpack_from('<H', self.data, c + 18)[0]
+        # Heuristic: component indices are small numbers. This helps avoid false positives.
+        if 1 <= comp_idx < 100:
+            # The next 2 bytes seem to be a size field.
+            payload_size = struct.unpack_from('<H', self.data, c + 2)[0]
 
-        # Check for a signature pattern of this record type
-        if record_type == 19 and name_idx > 0 and val_idx > 0 and comp_idx > 0:
-            self.records.append(PropertyRecord(
-                offset=c, size=20, record_type=record_type,
-                component_name_idx=comp_idx,
-                property_name_idx=name_idx,
-                property_value_idx=val_idx
-            ))
-            return True
+            # The full record size must be aligned to 4 bytes.
+            full_size = 4 + payload_size
+            aligned_size = full_size + (4 - full_size % 4) if full_size % 4 != 0 else full_size
+
+            if c + aligned_size <= len(self.data):
+                payload_data = self.data[c + 4 : c + 4 + payload_size]
+
+                # The payload is a list of 2-byte value indices.
+                value_indices = [struct.unpack_from('<H', payload_data, i)[0] for i in range(0, len(payload_data), 2)]
+
+                self.records.append(ComponentRecord(
+                    offset=c, size=aligned_size, component_index=comp_idx,
+                    property_value_indices=value_indices
+                ))
+                return True
         return False
 
     def _try_parse_generic(self, c: int) -> bool:
-        """Parses any block of data that doesn't match a known structure."""
         end = c + 4
-        # Greedily consume bytes until we hit a known separator or the end.
         while end < len(self.data):
             if end + 4 > len(self.data): break
             next_id = struct.unpack_from('<I', self.data, end)[0]
-            if next_id == 0xffffffff or next_id == 19:
+            comp_idx_cand = struct.unpack_from('<H', self.data, end)[0]
+            if next_id == 0xffffffff or (1 <= comp_idx_cand < 100):
                 break
             end += 4
 
