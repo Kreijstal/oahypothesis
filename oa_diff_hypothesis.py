@@ -2,8 +2,13 @@ import struct
 import sys
 import difflib
 
-# Import the intelligent parser for Table 0xc
+# Import the intelligent parsers for all tables
 from table_c_parser import HypothesisParser
+from table_a_parser import TableAParser
+from table_b_parser import TableBParser
+from table_1d_parser import Table1dParser
+from table_133_parser import Table133Parser
+from table_1_parser import Table1Parser
 
 # Helper function to format data into a hex view similar to `xxd`
 def hex_dump(data, prefix=''):
@@ -87,6 +92,101 @@ def diff_oa_tables(file_old_path, file_new_path):
 
         if data_old == data_new:
             print("  NOTE: Table data is identical, only offset/size metadata changed.\n")
+            continue
+
+        # --- SPECIALIZED DIFF FOR TABLE 0x1 ---
+        if table_id == 0x1:
+            print("  --- Structured Diff for Table 0x1 (Global Metadata) ---")
+            parser_old = Table1Parser(data_old)
+            parser_new = Table1Parser(data_new)
+            lines_old = parser_old.parse().split('\n')
+            lines_new = parser_new.parse().split('\n')
+
+            diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
+            
+            diff_lines = list(diff)[2:] # Skip the ---/+++ file headers
+            if not diff_lines:
+                 print("  NOTE: Parsed structure is identical.")
+            else:
+                for line in diff_lines:
+                    print(f"  {line}")
+            print("\n")
+            continue
+
+        # --- SPECIALIZED DIFF FOR TABLE 0xa ---
+        if table_id == 0xa:
+            print("  --- Structured Diff for Table 0xa (String Table) ---")
+            parser_old = TableAParser(data_old)
+            parser_new = TableAParser(data_new)
+            lines_old = parser_old.parse().split('\n')
+            lines_new = parser_new.parse().split('\n')
+
+            diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
+            
+            diff_lines = list(diff)[2:]
+            if not diff_lines:
+                 print("  NOTE: Parsed structure is identical.")
+            else:
+                for line in diff_lines:
+                    print(f"  {line}")
+            print("\n")
+            continue
+
+        # --- SPECIALIZED DIFF FOR TABLE 0xb ---
+        if table_id == 0xb:
+            print("  --- Structured Diff for Table 0xb (Property List) ---")
+            parser_old = TableBParser(data_old)
+            parser_new = TableBParser(data_new)
+            lines_old = parser_old.parse().split('\n')
+            lines_new = parser_new.parse().split('\n')
+
+            diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
+            
+            diff_lines = list(diff)[2:]
+            if not diff_lines:
+                 print("  NOTE: Parsed structure is identical.")
+            else:
+                for line in diff_lines:
+                    print(f"  {line}")
+            print("\n")
+            continue
+
+        # --- SPECIALIZED DIFF FOR TABLE 0x1d ---
+        if table_id == 0x1d:
+            print("  --- Structured Diff for Table 0x1d (Table Directory) ---")
+            parser_old = Table1dParser(data_old)
+            parser_new = Table1dParser(data_new)
+            lines_old = parser_old.parse().split('\n')
+            lines_new = parser_new.parse().split('\n')
+
+            diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
+            
+            diff_lines = list(diff)[2:]
+            if not diff_lines:
+                 print("  NOTE: Parsed structure is identical.")
+            else:
+                for line in diff_lines:
+                    print(f"  {line}")
+            print("\n")
+            continue
+
+        # --- SPECIALIZED DIFF FOR TABLE 0x133 ---
+        if table_id == 0x133:
+            print("  --- Structured Diff for Table 0x133 ---")
+            parser_old = Table133Parser(data_old)
+            parser_new = Table133Parser(data_new)
+            lines_old = parser_old.parse().split('\n')
+            lines_new = parser_new.parse().split('\n')
+
+            diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
+            
+            diff_lines = list(diff)[2:]
+            if not diff_lines:
+                 print("  NOTE: Parsed structure is identical.")
+            else:
+                for line in diff_lines:
+                    print(f"  {line}")
+            print("\n")
             continue
 
         # --- SPECIALIZED DIFF FOR TABLE 0xc ---

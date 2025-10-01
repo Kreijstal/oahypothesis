@@ -9,6 +9,7 @@ from table_133_parser import Table133Parser
 from table_a_parser import TableAParser
 from table_b_parser import TableBParser
 from table_1d_parser import Table1dParser
+from table_1_parser import Table1Parser
 
 # --- Generic Dump Utilities ---
 
@@ -106,7 +107,13 @@ if __name__ == '__main__':
                     continue
 
                 # --- Specialized Parsers ---
-                if table_id == 0x0a:
+                if table_id == 0x01:
+                    print("\n--- Parsed Structure of Table 0x1 (Global Metadata) ---")
+                    f.seek(offset)
+                    parser = Table1Parser(f.read(size))
+                    print(parser.parse())
+                
+                elif table_id == 0x0a:
                     print("\n--- Parsed Structure of Table 0xa (String Table) ---")
                     f.seek(offset)
                     parser = TableAParser(f.read(size))

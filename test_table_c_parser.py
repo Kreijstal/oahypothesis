@@ -28,6 +28,12 @@ def test_timestamps():
         'sch6.oa': 1759269681,
         'sch7.oa': 1759269898,
         'sch8.oa': 1759270115,
+        'sch9.oa': 1759354688,
+        'sch10.oa': 1759354769,
+        'sch11.oa': 1759354797,
+        'sch12.oa': 1759354903,
+        'sch13.oa': 1759354958,
+        'sch14.oa': 1759356124,
     }
     
     all_passed = True
@@ -72,10 +78,13 @@ def test_property_value_detection():
     print("="*70)
     
     test_cases = [
-        ('sch4.oa', 68),  # Resistance at 1K
-        ('sch5.oa', 70),  # Resistance at 2K (ID changed by +2)
-        ('sch6.oa', 76),  # Changed to capacitor
-        ('sch7.oa', 76),  # Added R1
+        ('sch4.oa', 68),   # Resistance at 1K
+        ('sch5.oa', 70),   # Resistance at 2K (ID changed by +2)
+        ('sch6.oa', 76),   # Changed to capacitor
+        ('sch7.oa', 76),   # Added R1
+        ('sch9.oa', 124),  # R1 set to 2K (reusing string)
+        ('sch10.oa', 126), # R1 changed to 3K (ID changed by +2)
+        ('sch14.oa', 136), # Mystery file
     ]
     
     all_passed = True
@@ -121,6 +130,9 @@ def test_property_value_changes():
         ('sch4.oa', 'sch5.oa', True),   # Resistance changed
         ('sch_old.oa', 'sch_new.oa', False),  # Just rename, no value change
         ('sch7.oa', 'sch8.oa', False),  # Wire added, no property change
+        ('sch9.oa', 'sch10.oa', True),  # R1: 2K → 3K (124 → 126)
+        ('sch10.oa', 'sch11.oa', True), # Different component changed
+        ('sch13.oa', 'sch14.oa', True), # Mystery change
     ]
     
     all_passed = True
