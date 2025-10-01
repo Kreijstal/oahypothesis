@@ -1,0 +1,665 @@
+--- Running Focused Parser on: sch_old.oa ---
+
+--- Parsed Structure of Table 0x1d (Table Directory) ---
+Table Directory (0x1d): 72 bytes
+================================================================================
+
+Complete Binary Data:
+--------------------------------------------------------------------------------
+  0000: 2a 00 00 00 00 00 00 00 1c 00 00 00 00 00 00 00  |*...............|
+  0010: 1d 00 00 00 00 00 00 00 04 00 00 00 00 00 00 00  |................|
+  0020: 05 00 00 00 00 00 00 00 19 00 00 00 00 00 00 00  |................|
+  0030: 06 00 00 00 00 00 00 00 25 00 00 00 00 00 00 00  |........%.......|
+  0040: 07 00 00 00 00 00 00 00                          |........|
+
+================================================================================
+Parsed Structure:
+--------------------------------------------------------------------------------
+
+Table ID Array: 9 entries (64-bit values)
+
+  [ 0] 0x0000: Table 0x2a (42)
+  [ 1] 0x0008: Table 0x1c (28)
+  [ 2] 0x0010: Table 0x1d (29)
+  [ 3] 0x0018: Table 0x4 (4)
+  [ 4] 0x0020: Table 0x5 (5)
+  [ 5] 0x0028: Table 0x19 (25)
+  [ 6] 0x0030: Table 0x6 (6)
+  [ 7] 0x0038: Table 0x25 (37)
+  [ 8] 0x0040: Table 0x7 (7)
+
+--------------------------------------------------------------------------------
+Interpretation:
+--------------------------------------------------------------------------------
+
+This table acts as a directory listing specific tables.
+These table IDs reference other tables in the file:
+
+  → 0x2a: Magic Number
+  → 0x1c: Record Structure
+  → 0x1d: Table Directory (self-reference)
+  → 0x4: Counter/Version
+  → 0x5: Flag/Unused
+  → 0x19: Unknown Structure
+  → 0x6: Type/Count Pair
+  → 0x25: Unknown
+  → 0x7: Pointer Table
+
+--- Parsed Structure of Table 0xa (String Table) ---
+String Table (0xa): 944 bytes
+================================================================================
+
+Header (20 bytes):
+  0000: 00 04 00 00 9a 03 00 00 00 00 00 00 00 00 00 00  |................|
+  0010: 00 00 00 00                                      |....|
+
+  Type ID: 0x00000400
+  Number of entries: 922 (0x39a)
+  Padding1: 0x00000000
+  Padding2: 0x00000000
+  Extra padding: 0x00000000
+
+String Data (924 bytes):
+--------------------------------------------------------------------------------
+Total strings found: 61
+
+  [  0] 0x0000: 'simple'
+  [  1] 0x0007: 'cellViewDdId'
+  [  2] 0x0014: '_dbvCvLastTimeStampExt'
+  [  3] 0x002b: '_dbvCvTimeStamp'
+  [  4] 0x003b: 'dbDesignMetaInfoModifyCount'
+  [  5] 0x0057: 'dbDesignMetaInfoTimeStamp'
+  [  6] 0x0072: 'dbWireEditorAppoaTaperCG'
+  [  7] 0x008b: 'virtuosoDefaultTaper'
+  [  8] 0x00a0: 'CDS_fbccs'
+  [  9] 0x00aa: 'cellViewLibDdId'
+  [ 10] 0x00ba: 'V0'
+  [ 11] 0x00bd: 'analogLib.vdc.symbol'
+  [ 12] 0x00d2: 'symbol'
+  [ 13] 0x00d9: 'vdc'
+  [ 14] 0x00dd: 'analogLib'
+  [ 15] 0x00e7: '1'
+  [ 16] 0x00e9: 'MINUS'
+  [ 17] 0x00ef: 'PLUS'
+  [ 18] 0x00f4: 'dbDesignMetaInfoTimeStampDdId'
+  [ 19] 0x0112: 'R0'
+  [ 20] 0x0115: 'analogLib.res.symbol'
+  [ 21] 0x012a: 'res'
+  [ 22] 0x012e: 'instance#'
+  [ 23] 0x0138: 'dbPropCallback::disable'
+  [ 24] 0x0150: 'I0'
+  [ 25] 0x0153: 'analogLib.gnd.symbol'
+  [ 26] 0x0168: 'gnd'
+  [ 27] 0x016c: 'gnd!'
+  [ 28] 0x0171: 'net1'
+  [ 29] 0x0176: 'sceIsSystemGeneratedNetName'
+  [ 30] 0x0192: 'schSceVersion'
+  [ 31] 0x01a0: 'sub-version  IC6.1.8-64b.500.14 '
+  [ 32] 0x01c1: 'schSceTimestamp'
+  [ 33] 0x01d1: 'schSceCounter'
+  [ 34] 0x01df: 'schSceRangeDescend'
+  [ 35] 0x01f2: 'schSceRangeAuto'
+  [ 36] 0x0202: 'schSceMethod'
+  [ 37] 0x020f: 'prefix'
+  [ 38] 0x0216: 'schSceSeparator'
+  [ 39] 0x0226: '_'
+  [ 40] 0x0228: 'schScePrefix'
+  [ 41] 0x0235: 'net'
+  [ 42] 0x0239: 'Instances "R0" and "V0" overlap by more than 10 percent.
+'
+  [ 43] 0x0273: 'Instance'
+  [ 44] 0x027c: 'SRC'
+  [ 45] 0x0280: '__CDBA_PARENTCHILD_ONLY_GROUP'
+  [ 46] 0x029e: 'oaUnrestricted'
+  [ 47] 0x02ad: 'masterChangeCount'
+  [ 48] 0x02bf: 'connectivityLastUpdated'
+  [ 49] 0x02d7: 'lastSchematicExtraction'
+  [ 50] 0x02ef: 'schDisplayPacketsGroup'
+  [ 51] 0x0306: 'schGeometryVersion'
+  [ 52] 0x0319: 'sch.ds.gm.1.4'
+  [ 53] 0x0327: 'schGeometryLastUpdated'
+  [ 54] 0x033e: 'cdbRevision'
+  [ 55] 0x034a: '_dbLastSavedCounter'
+  [ 56] 0x035e: 'rodMasters'
+  [ 57] 0x0369: 'rodAlignments'
+  [ 58] 0x0377: 'geProtectedFiguresGroup'
+  [ 59] 0x038f: 'what'
+  [ 60] 0x0394: 'popop'
+
+--- Parsed Structure of Table 0xb (Property List) ---
+--- Parsed Structure of Table 0xb (Size: 296 bytes) ---
+
+[Header]
+  - Size: 220 bytes (0x0000 - 0x00db)
+  - Note: Header is treated as an opaque block.
+
+[Metadata]
+  - Record Count at 0x00dc: 15
+
+[Property Records]
+  - Location: 0x00e0 -> end
+  - Record Size: 4 bytes
+----------------------------------------
+  - Record[000] at 0x00e0: Full=0x00000000 (Low=0x0000, High=0x0000)
+  - Record[001] at 0x00e4: Full=0xffffffff (Low=0xffff, High=0xffff)
+  - Record[002] at 0x00e8: Full=0xc8000000 (Low=0x0000, High=0xc800)
+  - Record[003] at 0x00ec: Full=0x01010101 (Low=0x0101, High=0x0101)
+  - Record[004] at 0x00f0: Full=0x01010101 (Low=0x0101, High=0x0101)
+  - Record[005] at 0x00f4: Full=0x01010101 (Low=0x0101, High=0x0101)
+  - Record[006] at 0x00f8: Full=0x00010101 (Low=0x0101, High=0x0001)
+  - Record[007] at 0x00fc: Full=0xc8000000 (Low=0x0000, High=0xc800)
+  - Record[008] at 0x0100: Full=0x00000002 (Low=0x0002, High=0x0000)
+  - Record[009] at 0x0104: Full=0x01760002 (Low=0x0002, High=0x0176)
+  - Record[010] at 0x0108: Full=0x01b401a6 (Low=0x01a6, High=0x01b4)
+  - Record[011] at 0x010c: Full=0x01d401bc (Low=0x01bc, High=0x01d4)
+  - Record[012] at 0x0110: Full=0x022601e0 (Low=0x01e0, High=0x0226)
+  - Record[013] at 0x0114: Full=0x02a20256 (Low=0x0256, High=0x02a2)
+  - Record[014] at 0x0118: Full=0x02da02d2 (Low=0x02d2, High=0x02da)
+  [INFO] Found 12 unexpected trailing bytes at the end of the table.
+
+--- Parsed Structure of Table 0x0c ---
+[HYPOTHESIS: Table Header | Size: 716 bytes]
+  - Field @ 0x00: Header ID -> 4 (0x4)
+  - Field @ 0x08: Pointer List End Offset -> 716 (0x2cc)
+  - Content: Found 89 64-bit pointers in this section.
+[HYPOTHESIS: Generic Record at 0x02cc | Size: 16 bytes]
+  - Content (summarized as 32-bit integers):
+    - Index[000]: 0 (0x0)
+    - Index[001]: 9 (0x9) (repeats 2 times)
+    - Index[003]: 0 (0x0)
+[HYPOTHESIS: Separator Record at 0x02dc | Size: 16 bytes]
+  - Field @ 0x00: Separator -> 0xffffffff
+  - Field @ 0x08: Value     -> 1 (0x1)
+[HYPOTHESIS: Generic Record at 0x02ec | Size: 684 bytes]
+  - Content (summarized as 32-bit integers):
+    - Index[000]: 33621252 (0x2010504)
+    - Index[001]: 6 (0x6)
+    - Index[002]: 3355443200 (0xc8000000)
+    - Index[003]: 2 (0x2)
+    - Index[004]: 19857626 (0x12f00da)
+    - Index[005]: 44958382 (0x2ae02ae)
+    - Index[006]: 46138030 (0x2c002ae)
+    - Index[007]: 50791128 (0x30702d8)
+    - Index[008]: 808 (0x328)
+    - Index[009]: 3355443200 (0xc8000000)
+    - Index[010]: 1 (0x1)
+    - Index[011]: 33620225 (0x2010101)
+    - Index[012]: 16843011 (0x1010103)
+    - Index[013]: 1 (0x1)
+    - Index[014]: 3355443200 (0xc8000000)
+    - Index[015]: 1 (0x1)
+    - Index[016]: 286326803 (0x11110013)
+    - Index[017]: 17 (0x11)
+    - Index[018]: 0 (0x0)
+    - Index[019]: 3355443200 (0xc8000000)
+    - Index[020]: 1 (0x1)
+    - Index[021]: 2304 (0x900)
+    - Index[022]: 117833728 (0x7060000)
+    - Index[023]: 8 (0x8)
+    - Index[024]: 58 (0x3a)
+    - Index[025]: 32 (0x20)
+    - Index[026]: 1 (0x1)
+    - Index[027]: 2 (0x2)
+    - Index[028]: 1048628 (0x100034)
+    - Index[029]: 3145776 (0x300030)
+    - Index[030]: 48 (0x30)
+    - Index[031]: 262154 (0x4000a)
+    - Index[032]: 0 (0x0) (repeats 3 times)
+    - Index[035]: 16 (0x10)
+    - Index[036]: 10 (0xa)
+    - Index[037]: 256 (0x100)
+    - Index[038]: 0 (0x0)
+    - Index[039]: 257 (0x101)
+    - Index[040]: 0 (0x0)
+    - Index[041]: 258 (0x102)
+    - Index[042]: 0 (0x0)
+    - Index[043]: 259 (0x103)
+    - Index[044]: 0 (0x0)
+    - Index[045]: 261 (0x105)
+    - Index[046]: 0 (0x0)
+    - Index[047]: 262 (0x106)
+    - Index[048]: 0 (0x0)
+    - Index[049]: 263 (0x107)
+    - Index[050]: 0 (0x0)
+    - Index[051]: 768 (0x300)
+    - Index[052]: 0 (0x0)
+    - Index[053]: 769 (0x301)
+    - Index[054]: 0 (0x0)
+    - Index[055]: 770 (0x302)
+    - Index[056]: 0 (0x0)
+    - Index[057]: 15 (0xf)
+    - Index[058]: 0 (0x0)
+    - Index[059]: 14 (0xe)
+    - Index[060]: 0 (0x0)
+    - Index[061]: 13 (0xd)
+    - Index[062]: 0 (0x0)
+    - Index[063]: 12 (0xc)
+    - Index[064]: 0 (0x0)
+    - Index[065]: 11 (0xb)
+    - Index[066]: 0 (0x0)
+    - Index[067]: 10 (0xa)
+    - Index[068]: 0 (0x0)
+    - Index[069]: 8 (0x8)
+    - Index[070]: 0 (0x0) (repeats 3 times)
+    - Index[073]: 4 (0x4)
+    - Index[074]: 0 (0x0)
+    - Index[075]: 5 (0x5)
+    - Index[076]: 0 (0x0) (repeats 15 times)
+    - Index[091]: 3 (0x3)
+    - Index[092]: 0 (0x0) (repeats 3 times)
+    - Index[095]: 1 (0x1)
+    - Index[096]: 0 (0x0)
+    - Index[097]: 4 (0x4)
+    - Index[098]: 0 (0x0)
+    - Index[099]: 284 (0x11c)
+    - Index[100]: 0 (0x0)
+    - Index[101]: 11 (0xb)
+    - Index[102]: 9 (0x9)
+    - Index[103]: 512 (0x200)
+    - Index[104]: 0 (0x0)
+    - Index[105]: 256 (0x100)
+    - Index[106]: 0 (0x0)
+    - Index[107]: 1 (0x1)
+    - Index[108]: 0 (0x0)
+    - Index[109]: 2 (0x2)
+    - Index[110]: 0 (0x0)
+    - Index[111]: 3 (0x3)
+    - Index[112]: 0 (0x0)
+    - Index[113]: 4 (0x4)
+    - Index[114]: 0 (0x0)
+    - Index[115]: 258 (0x102)
+    - Index[116]: 0 (0x0)
+    - Index[117]: 514 (0x202)
+    - Index[118]: 0 (0x0)
+    - Index[119]: 312 (0x138)
+    - Index[120]: 2147483648 (0x80000000)
+    - Index[121]: 284 (0x11c)
+    - Index[122]: 0 (0x0) (repeats 5 times)
+    - Index[127]: 4 (0x4)
+    - Index[128]: 0 (0x0)
+    - Index[129]: 8 (0x8)
+    - Index[130]: 0 (0x0)
+    - Index[131]: 12 (0xc)
+    - Index[132]: 0 (0x0)
+    - Index[133]: 16 (0x10)
+    - Index[134]: 0 (0x0)
+    - Index[135]: 20 (0x14)
+    - Index[136]: 0 (0x0)
+    - Index[137]: 24 (0x18)
+    - Index[138]: 0 (0x0)
+    - Index[139]: 28 (0x1c)
+    - Index[140]: 0 (0x0)
+    - Index[141]: 4 (0x4)
+    - Index[142]: 0 (0x0)
+    - Index[143]: 4 (0x4)
+    - Index[144]: 0 (0x0)
+    - Index[145]: 4 (0x4)
+    - Index[146]: 0 (0x0)
+    - Index[147]: 4 (0x4)
+    - Index[148]: 0 (0x0)
+    - Index[149]: 4 (0x4)
+    - Index[150]: 0 (0x0)
+    - Index[151]: 4 (0x4)
+    - Index[152]: 0 (0x0)
+    - Index[153]: 4 (0x4)
+    - Index[154]: 0 (0x0)
+    - Index[155]: 16 (0x10)
+    - Index[156]: 0 (0x0) (repeats 13 times)
+    - Index[169]: 1 (0x1)
+    - Index[170]: 312 (0x138)
+[HYPOTHESIS: Separator Record at 0x0598 | Size: 16 bytes]
+  - Field @ 0x00: Separator -> 0xffffffff
+  - Field @ 0x08: Value     -> 10 (0xa)
+[HYPOTHESIS: Generic Record at 0x05a8 | Size: 20 bytes]
+  - Content (summarized as 32-bit integers):
+    - Index[000]: 0 (0x0)
+    - Index[001]: 1 (0x1)
+    - Index[002]: 9 (0x9)
+    - Index[003]: 0 (0x0) (repeats 2 times)
+[HYPOTHESIS: Separator Record at 0x05bc | Size: 16 bytes]
+  - Field @ 0x00: Separator -> 0xffffffff
+  - Field @ 0x08: Value     -> 2147483648 (0x80000000)
+[HYPOTHESIS: Generic Record at 0x05cc | Size: 192 bytes]
+  - Content (summarized as 32-bit integers):
+    - Index[000]: 1 (0x1)
+    - Index[001]: 2 (0x2) (repeats 2 times)
+    - Index[003]: 4 (0x4)
+    - Index[004]: 0 (0x0)
+    - Index[005]: 164 (0xa4)
+    - Index[006]: 0 (0x0)
+    - Index[007]: 6 (0x6)
+    - Index[008]: 5 (0x5)
+    - Index[009]: 1 (0x1)
+    - Index[010]: 0 (0x0)
+    - Index[011]: 2 (0x2)
+    - Index[012]: 0 (0x0)
+    - Index[013]: 3 (0x3)
+    - Index[014]: 0 (0x0)
+    - Index[015]: 4 (0x4)
+    - Index[016]: 0 (0x0)
+    - Index[017]: 768 (0x300)
+    - Index[018]: 0 (0x0)
+    - Index[019]: 164 (0xa4)
+    - Index[020]: 0 (0x0)
+    - Index[021]: 168 (0xa8)
+    - Index[022]: 0 (0x0)
+    - Index[023]: 172 (0xac)
+    - Index[024]: 0 (0x0)
+    - Index[025]: 176 (0xb0)
+    - Index[026]: 0 (0x0)
+    - Index[027]: 180 (0xb4)
+    - Index[028]: 0 (0x0)
+    - Index[029]: 4 (0x4)
+    - Index[030]: 0 (0x0)
+    - Index[031]: 4 (0x4)
+    - Index[032]: 0 (0x0)
+    - Index[033]: 4 (0x4)
+    - Index[034]: 0 (0x0)
+    - Index[035]: 4 (0x4)
+    - Index[036]: 0 (0x0)
+    - Index[037]: 28 (0x1c)
+    - Index[038]: 0 (0x0) (repeats 7 times)
+    - Index[045]: 6 (0x6) (repeats 2 times)
+    - Index[047]: 0 (0x0)
+[HYPOTHESIS: Separator Record at 0x068c | Size: 16 bytes]
+  - Field @ 0x00: Separator -> 0xffffffff
+  - Field @ 0x08: Value     -> 1 (0x1)
+[HYPOTHESIS: Generic Record at 0x069c | Size: 4 bytes]
+  - Content (summarized as 32-bit integers):
+    - Index[000]: 28 (0x1c)
+[ANALYTICAL PARSE: Netlist Record at 0x06a0 | Aligned Size: 72 bytes]
+  - Field @ 0x00: Record Type ID -> 19 (0x13)
+  - Field @ 0x04: Block Metadata -> 60 (0x3c) (Implies Payload of 60 bytes)
+  - Field @ 0x08: Block Metadata -> 60 (0x3c)
+  - Payload Content:
+    - Found 7 complete 8-byte descriptor pairs.
+    - Found 4 trailing/padding bytes.
+
+    --- 8-Byte Descriptor List ---
+      Offset 0x06ac: (Value: 4, Value: 164)
+      Offset 0x06b4: (Value: 0, Value: 6)
+      Offset 0x06bc: (Value: 5, Value: 1)
+      Offset 0x06c4: (Value: 0, Value: 2)
+      Offset 0x06cc: (Value: 0, Value: 3)
+      Offset 0x06d4: (Value: 0, Value: 4)
+      Offset 0x06dc: (Value: 0, Value: 768)
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! WARNING: Irregular structure detected (payload not a multiple of 8).
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    --- Trailing Bytes ---
+      Offset 0x06e4: 00 00 00 00
+[HYPOTHESIS: Generic Record at 0x06e8 | Size: 120 bytes]
+  - Content (summarized as 32-bit integers):
+    - Index[000]: 164 (0xa4)
+    - Index[001]: 0 (0x0)
+    - Index[002]: 168 (0xa8)
+    - Index[003]: 0 (0x0)
+    - Index[004]: 172 (0xac)
+    - Index[005]: 0 (0x0)
+    - Index[006]: 176 (0xb0)
+    - Index[007]: 0 (0x0)
+    - Index[008]: 180 (0xb4)
+    - Index[009]: 0 (0x0)
+    - Index[010]: 4 (0x4)
+    - Index[011]: 0 (0x0)
+    - Index[012]: 4 (0x4)
+    - Index[013]: 0 (0x0)
+    - Index[014]: 4 (0x4)
+    - Index[015]: 0 (0x0)
+    - Index[016]: 4 (0x4)
+    - Index[017]: 0 (0x0)
+    - Index[018]: 12 (0xc)
+    - Index[019]: 0 (0x0) (repeats 8 times)
+    - Index[027]: 2 (0x2) (repeats 2 times)
+    - Index[029]: 0 (0x0)
+[HYPOTHESIS: Separator Record at 0x0760 | Size: 16 bytes]
+  - Field @ 0x00: Separator -> 0xffffffff
+  - Field @ 0x08: Value     -> 2 (0x2)
+[HYPOTHESIS: Generic Record at 0x0770 | Size: 180 bytes]
+  - Content (summarized as 32-bit integers):
+    - Index[000]: 4 (0x4)
+    - Index[001]: 0 (0x0)
+    - Index[002]: 164 (0xa4)
+    - Index[003]: 0 (0x0)
+    - Index[004]: 6 (0x6)
+    - Index[005]: 5 (0x5)
+    - Index[006]: 1 (0x1)
+    - Index[007]: 0 (0x0)
+    - Index[008]: 2 (0x2)
+    - Index[009]: 0 (0x0)
+    - Index[010]: 3 (0x3)
+    - Index[011]: 0 (0x0)
+    - Index[012]: 4 (0x4)
+    - Index[013]: 0 (0x0)
+    - Index[014]: 768 (0x300)
+    - Index[015]: 0 (0x0)
+    - Index[016]: 164 (0xa4)
+    - Index[017]: 0 (0x0)
+    - Index[018]: 168 (0xa8)
+    - Index[019]: 0 (0x0)
+    - Index[020]: 172 (0xac)
+    - Index[021]: 0 (0x0)
+    - Index[022]: 176 (0xb0)
+    - Index[023]: 0 (0x0)
+    - Index[024]: 180 (0xb4)
+    - Index[025]: 0 (0x0)
+    - Index[026]: 4 (0x4)
+    - Index[027]: 0 (0x0)
+    - Index[028]: 4 (0x4)
+    - Index[029]: 0 (0x0)
+    - Index[030]: 4 (0x4)
+    - Index[031]: 0 (0x0)
+    - Index[032]: 4 (0x4)
+    - Index[033]: 0 (0x0)
+    - Index[034]: 12 (0xc)
+    - Index[035]: 0 (0x0) (repeats 7 times)
+    - Index[042]: 1 (0x1) (repeats 2 times)
+    - Index[044]: 0 (0x0)
+
+======================================================================
+[VERIFIED: Final Save Timestamp at 0x0824]
+  - Field @ 0x00: Separator         -> 0xffffffff
+  - Field @ 0x08: 32-bit Timestamp  -> 1759219482 (0x68db8f1a)
+  - INTERPRETED AS UTC  -> 2025-09-30 08:04:42 UTC
+======================================================================
+[HYPOTHESIS: Generic Record at 0x0834 | Size: 4 bytes]
+  - Content (summarized as 32-bit integers):
+    - Index[000]: 1 (0x1)
+
+--- Parsed Structure of Table 0x133 ---
+[Full Integer Array Dump of Entire Table]
+  - Parsed a total of 235 32-bit integers.
+--------------------------------------------------
+  - Index[000]: 4 (0x4)
+  - Index[001]: 0 (0x0)
+  - Index[002]: 548 (0x224)
+  - Index[003]: 0 (0x0)
+  - Index[004]: 22 (0x16)
+  - Index[005]: 17 (0x11)
+  - Index[006]: 1 (0x1)
+  - Index[007]: 0 (0x0)
+  - Index[008]: 2 (0x2)
+  - Index[009]: 0 (0x0)
+  - Index[010]: 3 (0x3)
+  - Index[011]: 0 (0x0)
+  - Index[012]: 4 (0x4)
+  - Index[013]: 0 (0x0)
+  - Index[014]: 260 (0x104)
+  - Index[015]: 0 (0x0)
+  - Index[016]: 768 (0x300)
+  - Index[017]: 0 (0x0)
+  - Index[018]: 769 (0x301)
+  - Index[019]: 0 (0x0)
+  - Index[020]: 774 (0x306)
+  - Index[021]: 0 (0x0)
+  - Index[022]: 770 (0x302)
+  - Index[023]: 0 (0x0)
+  - Index[024]: 771 (0x303)
+  - Index[025]: 0 (0x0)
+  - Index[026]: 772 (0x304)
+  - Index[027]: 0 (0x0)
+  - Index[028]: 773 (0x305)
+  - Index[029]: 0 (0x0)
+  - Index[030]: 775 (0x307)
+  - Index[031]: 0 (0x0)
+  - Index[032]: 256 (0x100)
+  - Index[033]: 0 (0x0)
+  - Index[034]: 259 (0x103)
+  - Index[035]: 0 (0x0)
+  - Index[036]: 777 (0x309)
+  - Index[037]: 0 (0x0)
+  - Index[038]: 778 (0x30a)
+  - Index[039]: 0 (0x0)
+  - Index[040]: 548 (0x224)
+  - Index[041]: 0 (0x0)
+  - Index[042]: 552 (0x228)
+  - Index[043]: 0 (0x0)
+  - Index[044]: 556 (0x22c)
+  - Index[045]: 0 (0x0)
+  - Index[046]: 560 (0x230)
+  - Index[047]: 0 (0x0)
+  - Index[048]: 564 (0x234)
+  - Index[049]: 0 (0x0)
+  - Index[050]: 572 (0x23c)
+  - Index[051]: 0 (0x0)
+  - Index[052]: 584 (0x248)
+  - Index[053]: 0 (0x0)
+  - Index[054]: 600 (0x258)
+  - Index[055]: 0 (0x0)
+  - Index[056]: 612 (0x264)
+  - Index[057]: 0 (0x0)
+  - Index[058]: 616 (0x268)
+  - Index[059]: 0 (0x0)
+  - Index[060]: 620 (0x26c)
+  - Index[061]: 0 (0x0)
+  - Index[062]: 624 (0x270)
+  - Index[063]: 0 (0x0)
+  - Index[064]: 628 (0x274)
+  - Index[065]: 0 (0x0)
+  - Index[066]: 632 (0x278)
+  - Index[067]: 0 (0x0)
+  - Index[068]: 636 (0x27c)
+  - Index[069]: 0 (0x0)
+  - Index[070]: 932 (0x3a4)
+  - Index[071]: 0 (0x0)
+  - Index[072]: 936 (0x3a8)
+  - Index[073]: 0 (0x0)
+  - Index[074]: 4 (0x4)
+  - Index[075]: 0 (0x0)
+  - Index[076]: 4 (0x4)
+  - Index[077]: 0 (0x0)
+  - Index[078]: 4 (0x4)
+  - Index[079]: 0 (0x0)
+  - Index[080]: 4 (0x4)
+  - Index[081]: 0 (0x0)
+  - Index[082]: 8 (0x8)
+  - Index[083]: 0 (0x0)
+  - Index[084]: 12 (0xc)
+  - Index[085]: 0 (0x0)
+  - Index[086]: 16 (0x10)
+  - Index[087]: 0 (0x0)
+  - Index[088]: 12 (0xc)
+  - Index[089]: 0 (0x0)
+  - Index[090]: 4 (0x4)
+  - Index[091]: 0 (0x0)
+  - Index[092]: 4 (0x4)
+  - Index[093]: 0 (0x0)
+  - Index[094]: 4 (0x4)
+  - Index[095]: 0 (0x0)
+  - Index[096]: 4 (0x4)
+  - Index[097]: 0 (0x0)
+  - Index[098]: 4 (0x4)
+  - Index[099]: 0 (0x0)
+  - Index[100]: 4 (0x4)
+  - Index[101]: 0 (0x0)
+  - Index[102]: 296 (0x128)
+  - Index[103]: 0 (0x0)
+  - Index[104]: 4 (0x4)
+  - Index[105]: 0 (0x0)
+  - Index[106]: 1 (0x1)
+  - Index[107]: 0 (0x0)
+      (Repeats 31 times)
+  - Index[138]: 1 (0x1)
+      (Repeats 2 times)
+  - Index[140]: 0 (0x0)
+
+  ==================================================
+  --- SEPARATOR (0xffffffff) FOUND AT INDEX 141 ---
+  ==================================================
+
+  - Index[142]: 3355443200 (0xc8000000)
+  - Index[143]: 0 (0x0)
+  - Index[144]: 3355443200 (0xc8000000)
+  - Index[145]: 1 (0x1)
+      (Repeats 2 times)
+  - Index[147]: 3355443200 (0xc8000000)
+  - Index[148]: 1 (0x1)
+      (Repeats 2 times)
+  - Index[150]: 0 (0x0)
+  - Index[151]: 3355443200 (0xc8000000)
+  - Index[152]: 1 (0x1)
+  - Index[153]: 19 (0x13)
+  - Index[154]: 2147483648 (0x80000000)
+      (Repeats 5 times)
+  - Index[159]: 0 (0x0)
+  - Index[160]: 16 (0x10)
+  - Index[161]: 1 (0x1)
+  - Index[162]: 2 (0x2)
+  - Index[163]: 0 (0x0)
+      (Repeats 3 times)
+  - Index[166]: 16 (0x10)
+  - Index[167]: 11 (0xb)
+  - Index[168]: 256 (0x100)
+  - Index[169]: 0 (0x0)
+  - Index[170]: 257 (0x101)
+  - Index[171]: 0 (0x0)
+  - Index[172]: 258 (0x102)
+  - Index[173]: 0 (0x0)
+  - Index[174]: 259 (0x103)
+  - Index[175]: 0 (0x0)
+  - Index[176]: 261 (0x105)
+  - Index[177]: 0 (0x0)
+  - Index[178]: 262 (0x106)
+  - Index[179]: 0 (0x0)
+  - Index[180]: 263 (0x107)
+  - Index[181]: 0 (0x0)
+  - Index[182]: 512 (0x200)
+  - Index[183]: 0 (0x0)
+  - Index[184]: 768 (0x300)
+  - Index[185]: 0 (0x0)
+  - Index[186]: 769 (0x301)
+  - Index[187]: 0 (0x0)
+  - Index[188]: 770 (0x302)
+  - Index[189]: 0 (0x0)
+  - Index[190]: 15 (0xf)
+  - Index[191]: 0 (0x0)
+  - Index[192]: 14 (0xe)
+  - Index[193]: 0 (0x0)
+  - Index[194]: 13 (0xd)
+  - Index[195]: 0 (0x0)
+  - Index[196]: 12 (0xc)
+  - Index[197]: 0 (0x0)
+  - Index[198]: 11 (0xb)
+  - Index[199]: 0 (0x0)
+  - Index[200]: 10 (0xa)
+  - Index[201]: 0 (0x0)
+  - Index[202]: 8 (0x8)
+  - Index[203]: 0 (0x0)
+  - Index[204]: 9 (0x9)
+  - Index[205]: 0 (0x0)
+      (Repeats 3 times)
+  - Index[208]: 1 (0x1)
+  - Index[209]: 0 (0x0)
+  - Index[210]: 2 (0x2)
+  - Index[211]: 0 (0x0)
+      (Repeats 24 times)
+--------------------------------------------------
+
+[Hypothesis Section]
+  Based on the full data dump above, a plausible candidate for the
+  Structural Change Counter has been located.
+  - Counter Value: 19
+  - Found at Index:  153
+  - Local Context: ... [1, 0, 3355443200, 1, 19, 2147483648, 2147483648, 2147483648] ...
