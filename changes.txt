@@ -111,5 +111,5 @@ This is the story of our reverse-engineering journey.
     *   **Evidence:** Significant netlist expansion (Table `0xc` grew by 28 bytes, 359 bytes changed). **New string "scale" was added** to the string table. Demonstrates adding new parameter properties to components requires new strings.
 
 15. **`sch14.oa`**
-    *   **Change:** The resistor (`R1`) resistance value appears to have been changed again.
+    *   **Change:** The resistor (`R1`) resistance value appears to have been changed again. (from 3K to 2K)
     *   **Evidence:** Minimal netlist changes (7 bytes changed in Table `0xc`). No new strings added. Property Value ID changed from 133 to 136 (+3). This file demonstrates that property value IDs continue to increment even when reusing existing string values, suggesting IDs track modification transactions rather than just final string values. The exact resistance value would require deeper analysis of the property value lookup table.
