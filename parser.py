@@ -6,6 +6,7 @@ import types
 # Import the specialized, hypothetical parsers we trust
 from table_c_parser import HypothesisParser
 from table_133_parser import Table133Parser
+from table_a_parser import TableAParser
 
 # --- Generic Dump Utilities ---
 
@@ -94,7 +95,13 @@ if __name__ == '__main__':
                     continue
 
                 # --- Specialized Parsers ---
-                if table_id == 0x0c:
+                if table_id == 0x0a:
+                    print("\n--- Parsed Structure of Table 0xa (String Table) ---")
+                    f.seek(offset)
+                    parser = TableAParser(f.read(size))
+                    print(parser.parse())
+                
+                elif table_id == 0x0c:
                     print("\n--- Parsed Structure of Table 0x0c ---")
                     f.seek(offset)
                     parser = HypothesisParser(f.read(size))
