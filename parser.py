@@ -13,8 +13,16 @@ from table_1d_parser import Table1dParser
 # --- Generic Dump Utilities ---
 
 def generate_hex_dump(data: bytes, table_id: int):
-    """Creates a complete, formatted hex dump for a given table's data."""
+    """
+    Creates a complete, formatted hex dump for a given table's data.
+    If the data is entirely zero-filled, it prints a summary instead.
+    """
     header = f"--- Hex Dump for Table 0x{table_id:x} (Size: {len(data)} bytes) ---"
+
+    # Check if the table is zero-filled by seeing if any byte is non-zero
+    if not any(data):
+        return f"{header}\n  - (Table is entirely zero-filled)"
+
     lines = [header]
     for i in range(0, len(data), 16):
         chunk = data[i:i+16]
