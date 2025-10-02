@@ -10,6 +10,9 @@ from table_b_parser import TableBParser
 from table_1d_parser import Table1dParser
 from table_1_parser import Table1Parser
 
+# Import rendering utilities
+from oaparser import render_report, render_regions_to_string
+
 # --- Generic Dump Utilities ---
 
 def generate_hex_dump(data: bytes, table_id: int):
@@ -100,43 +103,47 @@ if __name__ == '__main__':
 
                 # --- Specialized Parsers ---
                 if table_id == 0x01:
-                    print("\n--- Parsed Structure of Table 0x1 (Global Metadata) ---")
+                    print("\n--- Table 0x1 (Global Metadata) ---")
                     f.seek(offset)
                     parser = Table1Parser(f.read(size))
-                    print(parser.parse())
+                    regions = parser.parse()
+                    render_report(regions, f"Global Metadata: {size} bytes")
 
                 elif table_id == 0x0a:
-                    print("\n--- Parsed Structure of Table 0xa (String Table) ---")
+                    print("\n--- Table 0xa (String Table) ---")
                     f.seek(offset)
                     parser = TableAParser(f.read(size))
-                    print(parser.parse())
+                    regions = parser.parse()
+                    render_report(regions, f"String Table: {size} bytes")
 
                 elif table_id == 0x0b:
-                    print("\n--- Parsed Structure of Table 0xb (Property List) ---")
+                    print("\n--- Table 0xb (Property List) ---")
                     f.seek(offset)
                     parser = TableBParser(f.read(size))
-                    print(parser.parse())
+                    regions = parser.parse()
+                    render_report(regions, f"Property List: {size} bytes")
 
                 elif table_id == 0x1d:
-                    print("\n--- Parsed Structure of Table 0x1d (Table Directory) ---")
+                    print("\n--- Table 0x1d (Table Directory) ---")
                     f.seek(offset)
                     parser = Table1dParser(f.read(size))
-                    print(parser.parse())
+                    regions = parser.parse()
+                    render_report(regions, f"Table Directory: {size} bytes")
 
                 elif table_id == 0x0c:
-                    print("\n--- Parsed Structure of Table 0x0c ---")
+                    print("\n--- Table 0xc (Netlist Data) ---")
                     f.seek(offset)
                     # Pass string table data to enable string resolution
                     parser = HypothesisParser(f.read(size), string_table_data)
-                    parser.parse()
-                    for record in parser.records:
-                        print(record)
+                    regions = parser.parse()
+                    render_report(regions, f"Netlist Data: {size} bytes")
 
                 elif table_id == 0x133:
-                    print("\n--- Parsed Structure of Table 0x133 ---")
+                    print("\n--- Table 0x133 ---")
                     f.seek(offset)
                     parser = Table133Parser(f.read(size))
-                    print(parser.parse())
+                    regions = parser.parse()
+                    render_report(regions, f"Table 0x133: {size} bytes")
 
                 # --- Generic Dumpers (if flags are used) ---
                 elif dump_hex:

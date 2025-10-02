@@ -9,6 +9,7 @@ from table_b_parser import TableBParser
 from table_1d_parser import Table1dParser
 from table_133_parser import Table133Parser
 from table_1_parser import Table1Parser
+from oaparser import render_regions_to_string
 
 # Helper function to format data into a hex view similar to `xxd`
 def hex_dump(data, prefix=''):
@@ -99,8 +100,10 @@ def diff_oa_tables(file_old_path, file_new_path):
             print("  --- Structured Diff for Table 0x1 (Global Metadata) ---")
             parser_old = Table1Parser(data_old)
             parser_new = Table1Parser(data_new)
-            lines_old = parser_old.parse().split('\n')
-            lines_new = parser_new.parse().split('\n')
+            regions_old = parser_old.parse()
+            regions_new = parser_new.parse()
+            lines_old = render_regions_to_string(regions_old, "").split('\n')
+            lines_new = render_regions_to_string(regions_new, "").split('\n')
 
             diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
             
@@ -118,8 +121,10 @@ def diff_oa_tables(file_old_path, file_new_path):
             print("  --- Structured Diff for Table 0xa (String Table) ---")
             parser_old = TableAParser(data_old)
             parser_new = TableAParser(data_new)
-            lines_old = parser_old.parse().split('\n')
-            lines_new = parser_new.parse().split('\n')
+            regions_old = parser_old.parse()
+            regions_new = parser_new.parse()
+            lines_old = render_regions_to_string(regions_old, "").split('\n')
+            lines_new = render_regions_to_string(regions_new, "").split('\n')
 
             diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
             
@@ -137,8 +142,10 @@ def diff_oa_tables(file_old_path, file_new_path):
             print("  --- Structured Diff for Table 0xb (Property List) ---")
             parser_old = TableBParser(data_old)
             parser_new = TableBParser(data_new)
-            lines_old = parser_old.parse().split('\n')
-            lines_new = parser_new.parse().split('\n')
+            regions_old = parser_old.parse()
+            regions_new = parser_new.parse()
+            lines_old = render_regions_to_string(regions_old, "").split('\n')
+            lines_new = render_regions_to_string(regions_new, "").split('\n')
 
             diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
             
@@ -156,8 +163,10 @@ def diff_oa_tables(file_old_path, file_new_path):
             print("  --- Structured Diff for Table 0x1d (Table Directory) ---")
             parser_old = Table1dParser(data_old)
             parser_new = Table1dParser(data_new)
-            lines_old = parser_old.parse().split('\n')
-            lines_new = parser_new.parse().split('\n')
+            regions_old = parser_old.parse()
+            regions_new = parser_new.parse()
+            lines_old = render_regions_to_string(regions_old, "").split('\n')
+            lines_new = render_regions_to_string(regions_new, "").split('\n')
 
             diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
             
@@ -175,8 +184,10 @@ def diff_oa_tables(file_old_path, file_new_path):
             print("  --- Structured Diff for Table 0x133 ---")
             parser_old = Table133Parser(data_old)
             parser_new = Table133Parser(data_new)
-            lines_old = str(parser_old.parse()).split('\n')
-            lines_new = str(parser_new.parse()).split('\n')
+            regions_old = parser_old.parse()
+            regions_new = parser_new.parse()
+            lines_old = render_regions_to_string(regions_old, "").split('\n')
+            lines_new = render_regions_to_string(regions_new, "").split('\n')
 
             diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
             
@@ -228,16 +239,32 @@ def diff_oa_tables(file_old_path, file_new_path):
                 else:
                     return (record_type, str(record)[:50])
             
+            # Parse to get regions
+            from oaparser.binary_curator import ClaimedRegion
+            regions_old = parser_old.parse()
+            regions_new = parser_new.parse()
+            
+            # Extract records from regions
+            records_old = []
+            for region in regions_old:
+                if isinstance(region, ClaimedRegion) and region.parsed_value:
+                    records_old.append(region.parsed_value)
+            
+            records_new = []
+            for region in regions_new:
+                if isinstance(region, ClaimedRegion) and region.parsed_value:
+                    records_new.append(region.parsed_value)
+            
             # Build signature maps
             old_by_sig = {}
-            for i, r in enumerate(parser_old.records):
+            for i, r in enumerate(records_old):
                 sig = get_record_signature(r)
                 if sig not in old_by_sig:
                     old_by_sig[sig] = []
                 old_by_sig[sig].append((i, r))
             
             new_by_sig = {}
-            for i, r in enumerate(parser_new.records):
+            for i, r in enumerate(records_new):
                 sig = get_record_signature(r)
                 if sig not in new_by_sig:
                     new_by_sig[sig] = []
