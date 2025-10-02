@@ -294,10 +294,39 @@ class HypothesisParser:
         try:
             header_end = self._parse_header_with_curator()
             
-            # Use legacy separator-based parsing for now
-            # TODO: Implement full pointer-driven parsing once we better understand
-            # which header values are actual record boundaries
-            return self._parse_legacy(header_end)
+            # PASS 2: Determine timestamp location using FIXED OFFSET from END
+            # *** CRITICAL DISCOVERY ***
+            # The timestamp separator is ALWAYS at exactly 20 bytes from the END of table 0xc
+            # This holds true for ALL observed .oa files (sch_old.oa through sch18.oa)
+            # 
+            # Table structure:
+            #   [Header: 716 bytes]
+            #   [Variable data]
+            #   [Timestamp separator: 16 bytes at offset (table_size - 20)]
+            #   [Final data: 4 bytes]
+            #
+            # This eliminates the need to scan for separators to find the timestamp!
+            timestamp_offset = None
+            timestamp_val = None
+            
+            TIMESTAMP_OFFSET_FROM_END = 20
+            if len(self.data) >= TIMESTAMP_OFFSET_FROM_END + 16:
+                candidate_timestamp_offset = len(self.data) - TIMESTAMP_OFFSET_FROM_END
+                # Verify it's actually a separator with a valid timestamp
+                sep_info = self._check_separator(candidate_timestamp_offset)
+                if sep_info:
+                    pos, val = sep_info
+                    ts_32bit = val & 0xFFFFFFFF
+                    if ts_32bit > 946684800:
+                        try:
+                            datetime.datetime.utcfromtimestamp(ts_32bit)
+                            timestamp_offset = pos
+                            timestamp_val = val
+                        except (ValueError, OSError):
+                            pass
+            
+            # PASS 3: Use legacy separator-based parsing with known timestamp location
+            return self._parse_legacy(header_end, timestamp_offset, timestamp_val)
 
         except Exception:
             pass
@@ -455,62 +484,67 @@ class HypothesisParser:
                     GenericRecord(p, s, rd, sr)
             )
     
-    def _parse_legacy(self, header_end: int) -> List[Region]:
+    def _parse_legacy(self, header_end: int, timestamp_offset: Optional[int] = None, timestamp_val: Optional[int] = None) -> List[Region]:
         """Legacy parsing method as fallback."""
-        # PASS 2: Find all separators first to identify timestamp
-        separator_positions = []
-        cursor = header_end
-        while cursor < len(self.data):
-            sep_info = self._check_separator(cursor)
-            if sep_info:
-                separator_positions.append(sep_info)
-                cursor += 16
-                continue
+        # If timestamp wasn't provided, try to find it by scanning
+        if timestamp_offset is None:
+            # PASS 2: Find all separators first to identify timestamp
+            separator_positions = []
+            cursor = header_end
+            while cursor < len(self.data):
+                sep_info = self._check_separator(cursor)
+                if sep_info:
+                    separator_positions.append(sep_info)
+                    cursor += 16
+                    continue
 
-            # Skip other structures for now
-            if cursor + 12 <= len(self.data):
-                t = struct.unpack_from('<I', self.data, cursor)[0]
-                if t == 19:
-                    s1, s2 = struct.unpack_from('<II', self.data, cursor + 4)
-                    if s1 == s2 and s1 > 0:
-                        payload_size = s1
-                        full_size = 12 + payload_size
-                        rem = full_size % 4
-                        aligned_size = full_size + (4-rem if rem != 0 else 0)
-                        cursor += aligned_size
+                # Skip other structures for now
+                if cursor + 12 <= len(self.data):
+                    t = struct.unpack_from('<I', self.data, cursor)[0]
+                    if t == 19:
+                        s1, s2 = struct.unpack_from('<II', self.data, cursor + 4)
+                        if s1 == s2 and s1 > 0:
+                            payload_size = s1
+                            full_size = 12 + payload_size
+                            rem = full_size % 4
+                            aligned_size = full_size + (4-rem if rem != 0 else 0)
+                            cursor += aligned_size
+                            continue
+
+                # Check for padding
+                if cursor + 16 <= len(self.data):
+                    v = struct.unpack_from('<I', self.data, cursor)[0]
+                    n = 1
+                    while cursor + (n + 1) * 4 <= len(self.data):
+                        next_val = struct.unpack_from('<I', self.data, cursor + n * 4)[0]
+                        if next_val != v:
+                            break
+                        n += 1
+                    if n >= 4:
+                        cursor += n * 4
                         continue
 
-            # Check for padding
-            if cursor + 16 <= len(self.data):
-                v = struct.unpack_from('<I', self.data, cursor)[0]
-                n = 1
-                while cursor + (n + 1) * 4 <= len(self.data):
-                    next_val = struct.unpack_from('<I', self.data, cursor + n * 4)[0]
-                    if next_val != v:
-                        break
-                    n += 1
-                if n >= 4:
-                    cursor += n * 4
-                    continue
-
-            # Generic - advance by 4
-            cursor += 4
-            if cursor >= len(self.data):
-                break
-
-        # Find the last valid timestamp
-        timestamp_pos = None
-        timestamp_val = None
-        for pos, val in reversed(separator_positions):
-            ts_32bit = val & 0xFFFFFFFF
-            if ts_32bit > 946684800:
-                try:
-                    datetime.datetime.utcfromtimestamp(ts_32bit)
-                    timestamp_pos = pos
-                    timestamp_val = val
+                # Generic - advance by 4
+                cursor += 4
+                if cursor >= len(self.data):
                     break
-                except (ValueError, OSError):
-                    continue
+
+            # Find the last valid timestamp
+            timestamp_pos = None
+            timestamp_value = None
+            for pos, val in reversed(separator_positions):
+                ts_32bit = val & 0xFFFFFFFF
+                if ts_32bit > 946684800:
+                    try:
+                        datetime.datetime.utcfromtimestamp(ts_32bit)
+                        timestamp_pos = pos
+                        timestamp_value = val
+                        break
+                    except (ValueError, OSError):
+                        continue
+            
+            timestamp_offset = timestamp_pos
+            timestamp_val = timestamp_value
 
         # PASS 3: Claim all structures with timestamp marked
         cursor = header_end
@@ -522,7 +556,7 @@ class HypothesisParser:
             if sep_info:
                 cursor_pos, value_64 = sep_info
                 self.curator.seek(cursor)
-                if cursor == timestamp_pos:
+                if cursor == timestamp_offset:
                     self.curator.claim(
                         "Timestamp",
                         16,
