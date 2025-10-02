@@ -175,8 +175,8 @@ def diff_oa_tables(file_old_path, file_new_path):
             print("  --- Structured Diff for Table 0x133 ---")
             parser_old = Table133Parser(data_old)
             parser_new = Table133Parser(data_new)
-            lines_old = parser_old.parse().split('\n')
-            lines_new = parser_new.parse().split('\n')
+            lines_old = str(parser_old.parse()).split('\n')
+            lines_new = str(parser_new.parse()).split('\n')
 
             diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
             
