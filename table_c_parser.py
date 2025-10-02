@@ -101,8 +101,7 @@ class TableHeader:
             else:
                 # Print individual fields if not part of a long run
                 for k in range(i, j):
-                    field_val = self.raw_all_fields[k]
-                    lines.append(f"  [Field {k:03d}]: 0x{field_val:x}")
+                    lines.append(f"  [Field {k:03d}]: 0x{val:x}")
                 i = j
         
         return "\n".join(lines)
