@@ -1,7 +1,8 @@
 # table_1d_parser.py - Parser for table directory 0x1d
 import struct
 from dataclasses import dataclass
-from oaparser import BinaryCurator, render_regions_to_string
+from typing import List
+from oaparser import BinaryCurator, Region
 
 @dataclass
 class TableIdEntry:
@@ -19,6 +20,8 @@ class Table1dParser:
     
     This table contains an array of table IDs, acting as a directory
     or reference list of specific tables in the file.
+    
+    Uses BinaryCurator internally to produce a lossless list of regions.
     """
     
     # Known table names for interpretation
@@ -34,23 +37,21 @@ class Table1dParser:
         0x2a: "Magic Number"
     }
     
-    def __init__(self, data):
+    def __init__(self, data: bytes):
         self.data = data
         self.table_ids = []
+        self.curator = BinaryCurator(self.data)
         
-    def parse(self):
+    def parse(self) -> List[Region]:
         """
-        Parse the table directory and return a formatted string.
+        Parse the table directory and return a list of regions.
         
-        Uses BinaryCurator to track regions and oa_renderer to format output.
+        Returns:
+            List of Region objects (ClaimedRegion and UnclaimedRegion) representing
+            the complete structure of the table.
         """
-        if len(self.data) < 8:
-            return f"Table Directory (0x1d): Too small ({len(self.data)} bytes)"
-        
-        curator = BinaryCurator(self.data)
-        
         # Parse as array of 64-bit table IDs
-        if len(self.data) % 8 == 0:
+        if len(self.data) >= 8 and len(self.data) % 8 == 0:
             num_entries = len(self.data) // 8
             
             for i in range(num_entries):
@@ -66,23 +67,12 @@ class Table1dParser:
                         return TableIdEntry(idx, tid, nm)
                     return parser
                 
-                curator.seek(offset)
-                curator.claim(
+                self.curator.seek(offset)
+                self.curator.claim(
                     f"Table ID [{i}]", 
                     8, 
                     make_parser(i, table_id, name)
                 )
         
-        # Get regions and render to string
-        regions = curator.get_regions()
-        report = render_regions_to_string(
-            regions, 
-            f"Table Directory (0x1d): {len(self.data)} bytes"
-        )
-        
-        # Add warning if size isn't a multiple of 8
-        if len(self.data) % 8 != 0:
-            report += f"\n\nWarning: Size {len(self.data)} is not a multiple of 8\n"
-            report += "Cannot fully parse as array of 64-bit values\n"
-        
-        return report
+        # Return the complete list of regions (claimed and unclaimed)
+        return self.curator.get_regions()
