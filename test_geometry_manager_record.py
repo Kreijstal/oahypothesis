@@ -1,23 +1,27 @@
 #!/usr/bin/env python3
 """
-Test script for GeometryManagerRecord detection and parsing.
+Test script for UnknownStruct60Byte detection and parsing.
+
+WARNING: This structure only appears in files sch5-8 and disappears in sch9+.
+The structure is hypothetical and not fully understood.
 
 This test verifies that the parser correctly identifies and parses
-GeometryManagerRecord structures when they are present in the data.
+this unknown structure when it is present in the data.
 """
 
 import struct
-from table_c_parser import HypothesisParser, GeometryManagerRecord
+from table_c_parser import HypothesisParser, UnknownStruct60Byte
 from oaparser.binary_curator import ClaimedRegion
 
 
-def test_geometry_manager_record_detection():
-    """Test that GeometryManagerRecord is detected in files where it exists."""
+def test_unknown_struct_detection():
+    """Test that UnknownStruct60Byte is detected in files where it exists (sch5-8 only)."""
     print("="*70)
-    print("TEST: GeometryManagerRecord Detection and Structure Parsing")
+    print("TEST: UnknownStruct60Byte Detection and Structure Parsing")
+    print("WARNING: This structure only appears in sch5-8, disappears in sch9+")
     print("="*70)
     
-    # Test file that is known to contain the GeometryManagerRecord
+    # Test file that is known to contain the unknown structure
     test_file = 'sch5.oa'
     
     try:
@@ -46,64 +50,64 @@ def test_geometry_manager_record_detection():
                     parser = HypothesisParser(data, string_table_data)
                     regions = parser.parse()
                     
-                    # Search for GeometryManagerRecord
+                    # Search for UnknownStruct60Byte
                     found_records = []
                     for region in regions:
                         if isinstance(region, ClaimedRegion):
-                            if isinstance(region.parsed_value, GeometryManagerRecord):
+                            if isinstance(region.parsed_value, UnknownStruct60Byte):
                                 found_records.append(region.parsed_value)
                     
                     # Verify detection
                     if not found_records:
-                        print(f"  ✗ {test_file}: No GeometryManagerRecord found")
+                        print(f"  ✗ {test_file}: No UnknownStruct60Byte found")
                         return False
                     
-                    print(f"  ✓ {test_file}: Found {len(found_records)} GeometryManagerRecord(s)")
+                    print(f"  ✓ {test_file}: Found {len(found_records)} UnknownStruct60Byte(s)")
                     
                     # Verify structure parsing
-                    for gm in found_records:
-                        print(f"\n  Verifying structure at offset 0x{gm.offset:x}:")
+                    for rec in found_records:
+                        print(f"\n  Verifying structure at offset 0x{rec.offset:x}:")
                         
                         # Check that parts exist
-                        if len(gm.padding) < 0:
-                            print(f"    ✗ Invalid padding size: {len(gm.padding)}")
+                        if len(rec.padding) < 0:
+                            print(f"    ✗ Invalid padding size: {len(rec.padding)}")
                             return False
-                        print(f"    ✓ Padding: {len(gm.padding)} bytes")
+                        print(f"    ✓ Padding: {len(rec.padding)} bytes")
                         
-                        if len(gm.config) != 8:
-                            print(f"    ✗ Config should be 8 bytes, got {len(gm.config)}")
+                        if len(rec.config_pattern) != 8:
+                            print(f"    ✗ Pattern should be 8 bytes, got {len(rec.config_pattern)}")
                             return False
-                        print(f"    ✓ Config: {len(gm.config)} bytes")
+                        print(f"    ✓ Pattern: {len(rec.config_pattern)} bytes")
                         
-                        if len(gm.payload) % 4 != 0:
-                            print(f"    ✗ Payload should be 4-byte aligned, got {len(gm.payload)}")
+                        if len(rec.payload) % 4 != 0:
+                            print(f"    ✗ Payload should be 4-byte aligned, got {len(rec.payload)}")
                             return False
-                        print(f"    ✓ Payload: {len(gm.payload)} bytes (4-byte aligned)")
+                        print(f"    ✓ Payload: {len(rec.payload)} bytes (4-byte aligned)")
                         
-                        if len(gm.footer) != 12:
-                            print(f"    ✗ Footer should be 12 bytes, got {len(gm.footer)}")
+                        if len(rec.trailing_separator) != 12:
+                            print(f"    ✗ Trailing should be 12 bytes, got {len(rec.trailing_separator)}")
                             return False
-                        print(f"    ✓ Footer: {len(gm.footer)} bytes")
+                        print(f"    ✓ Trailing: {len(rec.trailing_separator)} bytes")
                         
-                        # Verify expected patterns
-                        if gm.config == GeometryManagerRecord.EXPECTED_CONFIG:
-                            print(f"    ✓ Config matches expected pattern")
+                        # Verify observed patterns
+                        if rec.config_pattern == UnknownStruct60Byte.OBSERVED_PATTERN:
+                            print(f"    ✓ Pattern matches observed 08 00 00 00 03 00 00 00")
                         else:
-                            print(f"    ✗ Config does NOT match expected pattern")
+                            print(f"    ✗ Pattern does NOT match observed")
                             return False
                         
-                        if gm.footer == GeometryManagerRecord.EXPECTED_FOOTER:
-                            print(f"    ✓ Footer matches expected pattern")
+                        if rec.trailing_separator == UnknownStruct60Byte.OBSERVED_SEPARATOR:
+                            print(f"    ✓ Trailing matches observed separator-like pattern")
                         else:
-                            print(f"    ✗ Footer does NOT match expected pattern")
+                            print(f"    ✗ Trailing does NOT match observed")
                             return False
                         
                         # Verify total size
-                        expected_size = len(gm.padding) + len(gm.config) + len(gm.payload) + len(gm.footer)
-                        if len(gm.data) != expected_size:
-                            print(f"    ✗ Total size mismatch: {len(gm.data)} vs {expected_size}")
+                        expected_size = len(rec.padding) + len(rec.config_pattern) + len(rec.payload) + len(rec.trailing_separator)
+                        if len(rec.data) != expected_size:
+                            print(f"    ✗ Total size mismatch: {len(rec.data)} vs {expected_size}")
                             return False
-                        print(f"    ✓ Total size correct: {len(gm.data)} bytes")
+                        print(f"    ✓ Total size correct: {len(rec.data)} bytes")
                     
                     print("\n" + "="*70)
                     print("TEST PASSED ✓")
@@ -123,13 +127,13 @@ def test_geometry_manager_record_detection():
     return False
 
 
-def test_backward_compatibility():
-    """Test that files without GeometryManagerRecord still parse correctly."""
+def test_structure_disappears_after_sch8():
+    """Test that the unknown structure disappears in sch9+ as expected."""
     print("\n" + "="*70)
-    print("TEST: Backward Compatibility (files without GeometryManagerRecord)")
+    print("TEST: Structure Disappearance (should NOT appear in sch9+)")
     print("="*70)
     
-    # Test files that don't contain the GeometryManagerRecord
+    # Test files where structure should NOT appear
     test_files = ['sch9.oa', 'sch13.oa', 'sch14.oa']
     
     all_passed = True
@@ -160,21 +164,19 @@ def test_backward_compatibility():
                         parser = HypothesisParser(data, string_table_data)
                         regions = parser.parse()
                         
-                        # Verify parsing succeeded
-                        if not regions:
-                            print(f"  ✗ {test_file}: No regions parsed")
-                            all_passed = False
-                            continue
-                        
-                        # Count region types
-                        type_counts = {}
+                        # Check for UnknownStruct60Byte (should NOT be found)
+                        found_unknown = False
                         for region in regions:
                             if isinstance(region, ClaimedRegion):
-                                type_name = type(region.parsed_value).__name__
-                                type_counts[type_name] = type_counts.get(type_name, 0) + 1
+                                if isinstance(region.parsed_value, UnknownStruct60Byte):
+                                    found_unknown = True
+                                    break
                         
-                        print(f"  ✓ {test_file}: Parsed {len(regions)} regions successfully")
-                        print(f"      (No GeometryManagerRecord, which is expected)")
+                        if found_unknown:
+                            print(f"  ✗ {test_file}: UnknownStruct60Byte found (should not exist)")
+                            all_passed = False
+                        else:
+                            print(f"  ✓ {test_file}: UnknownStruct60Byte absent (as expected)")
                         break
                         
         except FileNotFoundError:
@@ -186,29 +188,31 @@ def test_backward_compatibility():
     
     if all_passed:
         print("\n" + "="*70)
-        print("BACKWARD COMPATIBILITY TEST PASSED ✓")
+        print("DISAPPEARANCE TEST PASSED ✓")
         print("="*70)
     else:
         print("\n" + "="*70)
-        print("BACKWARD COMPATIBILITY TEST FAILED ✗")
+        print("DISAPPEARANCE TEST FAILED ✗")
         print("="*70)
     
     return all_passed
 
 
 if __name__ == '__main__':
-    test1_pass = test_geometry_manager_record_detection()
-    test2_pass = test_backward_compatibility()
+    test1_pass = test_unknown_struct_detection()
+    test2_pass = test_structure_disappears_after_sch8()
     
     print("\n" + "="*70)
     print("OVERALL TEST SUMMARY")
     print("="*70)
-    print(f"  GeometryManagerRecord Detection: {'PASSED ✓' if test1_pass else 'FAILED ✗'}")
-    print(f"  Backward Compatibility: {'PASSED ✓' if test2_pass else 'FAILED ✗'}")
+    print(f"  UnknownStruct60Byte Detection: {'PASSED ✓' if test1_pass else 'FAILED ✗'}")
+    print(f"  Structure Disappearance: {'PASSED ✓' if test2_pass else 'FAILED ✗'}")
     print("="*70)
     
     if test1_pass and test2_pass:
         print("\nALL TESTS PASSED ✓")
+        print("\nNOTE: This structure is hypothetical and only appears in sch5-8.")
+        print("It disappears in sch9+ suggesting transient metadata, not a stable format.")
         exit(0)
     else:
         print("\nSOME TESTS FAILED ✗")

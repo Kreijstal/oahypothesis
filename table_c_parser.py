@@ -295,52 +295,62 @@ def _generate_diff(expected: bytes, actual: bytes) -> List[str]:
     return diff_lines
 
 @dataclass
-class GeometryManagerRecord:
+class UnknownStruct60Byte:
     """
-    Parses the multi-part structure for schematic metadata records.
-    This record has stable Config and Footer blocks, with a variable Payload.
+    WARNING: HYPOTHETICAL STRUCTURE - UNDERSTANDING INCOMPLETE
+    
+    This structure appears ONLY in files sch5-8 and disappears in sch9+.
+    
+    Observed pattern (60 bytes total):
+    - Padding (variable, ~32 bytes)
+    - Pattern: 08 00 00 00 03 00 00 00 (8 bytes) - UNSTABLE, disappears in sch9
+    - Payload (variable)
+    - Ends with: ff ff ff ff 00 00 00 c8 02 00 00 00 e8 00 1a 03 (16 bytes)
+      NOTE: This is actually a SEPARATOR record (0xffffffff marker), NOT a stable footer!
+    
+    DO NOT assume this represents a stable format feature.
+    It may be transient metadata that appears during certain operations.
     """
     offset: int
     data: bytes
 
     # Parsed sub-records
     padding: bytes
-    config: bytes
+    config_pattern: bytes  # Renamed from 'config' - we don't know what this is
     payload: bytes
-    footer: bytes
+    trailing_separator: bytes  # Renamed from 'footer' - it's actually a separator
     
-    # Class-level constants for assertion
-    EXPECTED_CONFIG = bytes.fromhex("0800000003000000")
-    EXPECTED_FOOTER = bytes.fromhex("000000c802000000e8001a03")  # Based on sch5.oa
+    # Class-level constants - THESE ARE NOT STABLE ACROSS ALL FILES
+    OBSERVED_PATTERN = bytes.fromhex("0800000003000000")
+    OBSERVED_SEPARATOR = bytes.fromhex("000000c802000000e8001a03")  # Actually a separator record
 
     def __str__(self):
-        lines = [f"Geometry Manager Record (Size: {len(self.data)} bytes)"]
+        lines = [f"Unknown 60-byte Structure (HYPOTHETICAL - appears only in sch5-8)"]
+        lines.append(f"  Total Size: {len(self.data)} bytes")
         
-        # 1. Analyze Padding - Its size is its primary interpretation
+        # 1. Padding
         lines.append(f"  - Padding: {len(self.padding)} bytes")
 
-        # 2. Analyze Config Block - Assert or Show Data
-        if self.config == self.EXPECTED_CONFIG:
-            lines.append(f"  - Config: 8 bytes (OK, matches expected pattern)")
+        # 2. Pattern block (unstable)
+        if self.config_pattern == self.OBSERVED_PATTERN:
+            lines.append(f"  - Pattern: 8 bytes (matches observed 08 00 00 00 03 00 00 00)")
         else:
-            lines.append(f"  - Config: 8 bytes (MODIFIED - VIOLATES EXPECTED PATTERN)")
-            # MANDATORY: Show the claimed data that does not match
-            lines.extend(_generate_diff(self.EXPECTED_CONFIG, self.config))
+            lines.append(f"  - Pattern: 8 bytes (DIFFERENT from observed)")
+            lines.extend(_generate_diff(self.OBSERVED_PATTERN, self.config_pattern))
 
-        # 3. Analyze Payload - Interpret and Show All Data
+        # 3. Payload
         payload_ints_str = "empty"
         if self.payload:
             payload_ints = [f"0x{v:x}" for v in struct.unpack(f'<{len(self.payload)//4}I', self.payload)]
             payload_ints_str = f"{{{', '.join(payload_ints)}}}"
         lines.append(f"  - Payload: {len(self.payload)} bytes, Values: {payload_ints_str}")
 
-        # 4. Analyze Footer - Assert or Show Data
-        if self.footer == self.EXPECTED_FOOTER:
-            lines.append(f"  - Footer: 12 bytes (OK, matches expected pattern)")
+        # 4. Trailing separator (not a footer!)
+        if self.trailing_separator == self.OBSERVED_SEPARATOR:
+            lines.append(f"  - Trailing: 12 bytes (ends with separator-like pattern)")
         else:
-            lines.append(f"  - Footer: 12 bytes (MODIFIED - VIOLATES EXPECTED PATTERN)")
-            # MANDATORY: Show the claimed data that does not match
-            lines.extend(_generate_diff(self.EXPECTED_FOOTER, self.footer))
+            lines.append(f"  - Trailing: 12 bytes (DIFFERENT)")
+            lines.extend(_generate_diff(self.OBSERVED_SEPARATOR, self.trailing_separator))
 
         return "\n".join(lines)
 
@@ -814,49 +824,50 @@ class HypothesisParser:
                 # Exit the loop
                 break
 
-    def _check_and_claim_geometry_manager(self, offset: int, size: int) -> bool:
+    def _check_and_claim_unknown_struct(self, offset: int, size: int) -> bool:
         """
-        Checks if a data block is a GeometryManagerRecord and claims it.
+        Checks if a data block matches the unknown 60-byte structure pattern.
+        WARNING: This structure only appears in sch5-8, disappears after.
         Returns True if claimed, False otherwise.
         """
-        # Signature: 8-byte config + 12-byte footer
-        CONFIG_SIG = GeometryManagerRecord.EXPECTED_CONFIG
-        FOOTER_SIG = GeometryManagerRecord.EXPECTED_FOOTER
-        MIN_SIZE = len(CONFIG_SIG) + len(FOOTER_SIG)  # Must be at least 20 bytes
+        # Observed pattern (UNSTABLE - disappears in sch9+)
+        PATTERN_SIG = UnknownStruct60Byte.OBSERVED_PATTERN
+        SEPARATOR_SIG = UnknownStruct60Byte.OBSERVED_SEPARATOR
+        MIN_SIZE = len(PATTERN_SIG) + len(SEPARATOR_SIG)  # Must be at least 20 bytes
 
         if size < MIN_SIZE:
             return False
 
         record_data = self.data[offset : offset + size]
         
-        # The signature is not at a fixed position due to variable padding.
-        # We find the config block, then check if the footer exists at the end.
-        config_pos = record_data.find(CONFIG_SIG)
+        # The pattern is not at a fixed position due to variable padding.
+        # We find the pattern block, then check if it ends with the separator.
+        pattern_pos = record_data.find(PATTERN_SIG)
         
-        # Check if config is present and footer is at the end of the block
-        if config_pos != -1 and record_data.endswith(FOOTER_SIG):
+        # Check if pattern is present and separator-like bytes at the end
+        if pattern_pos != -1 and record_data.endswith(SEPARATOR_SIG):
             
-            payload_start = config_pos + len(CONFIG_SIG)
-            payload_end = size - len(FOOTER_SIG)
+            payload_start = pattern_pos + len(PATTERN_SIG)
+            payload_end = size - len(SEPARATOR_SIG)
             
             # Ensure boundaries are logical
             if payload_start <= payload_end:
-                padding = record_data[:config_pos]
-                config = record_data[config_pos:payload_start]
+                padding = record_data[:pattern_pos]
+                pattern = record_data[pattern_pos:payload_start]
                 payload = record_data[payload_start:payload_end]
-                footer = record_data[payload_end:]
+                separator = record_data[payload_end:]
                 
                 self.curator.seek(offset)
                 self.curator.claim(
-                    "GeometryManagerRecord",
+                    "UnknownStruct60Byte",
                     size,
-                    lambda d: GeometryManagerRecord(
+                    lambda d: UnknownStruct60Byte(
                         offset=offset,
                         data=record_data,
                         padding=padding,
-                        config=config,
+                        config_pattern=pattern,
                         payload=payload,
-                        footer=footer
+                        trailing_separator=separator
                     )
                 )
                 return True
@@ -869,8 +880,8 @@ class HypothesisParser:
             return
 
         # --- THE REFACTOR ---
-        # 1. Try to claim as the new, specific GeometryManagerRecord FIRST.
-        if self._check_and_claim_geometry_manager(offset, size):
+        # 1. Try to claim as the hypothetical unknown structure FIRST (only appears in some files).
+        if self._check_and_claim_unknown_struct(offset, size):
             return  # Success, we are done.
 
         # --- The rest of the function remains the same ---
