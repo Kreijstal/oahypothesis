@@ -295,6 +295,66 @@ def _generate_diff(expected: bytes, actual: bytes) -> List[str]:
     return diff_lines
 
 @dataclass
+class UnknownStruct60Byte:
+    """
+    WARNING: HYPOTHETICAL STRUCTURE - UNDERSTANDING INCOMPLETE
+    
+    This structure appears ONLY in files sch5-8 and disappears in sch9+.
+    
+    Observed pattern (60 bytes total):
+    - Padding (variable, ~32 bytes)
+    - Pattern: 08 00 00 00 03 00 00 00 (8 bytes) - UNSTABLE, disappears in sch9
+    - Payload (variable)
+    - Ends with: ff ff ff ff 00 00 00 c8 02 00 00 00 e8 00 1a 03 (16 bytes)
+      NOTE: This is actually a SEPARATOR record (0xffffffff marker), NOT a stable footer!
+    
+    DO NOT assume this represents a stable format feature.
+    It may be transient metadata that appears during certain operations.
+    """
+    offset: int
+    data: bytes
+
+    # Parsed sub-records
+    padding: bytes
+    config_pattern: bytes  # Renamed from 'config' - we don't know what this is
+    payload: bytes
+    trailing_separator: bytes  # Renamed from 'footer' - it's actually a separator
+    
+    # Class-level constants - THESE ARE NOT STABLE ACROSS ALL FILES
+    OBSERVED_PATTERN = bytes.fromhex("0800000003000000")
+    OBSERVED_SEPARATOR = bytes.fromhex("000000c802000000e8001a03")  # Actually a separator record
+
+    def __str__(self):
+        lines = [f"Unknown 60-byte Structure (HYPOTHETICAL - appears only in sch5-8)"]
+        lines.append(f"  Total Size: {len(self.data)} bytes")
+        
+        # 1. Padding
+        lines.append(f"  - Padding: {len(self.padding)} bytes")
+
+        # 2. Pattern block (unstable)
+        if self.config_pattern == self.OBSERVED_PATTERN:
+            lines.append(f"  - Pattern: 8 bytes (matches observed 08 00 00 00 03 00 00 00)")
+        else:
+            lines.append(f"  - Pattern: 8 bytes (DIFFERENT from observed)")
+            lines.extend(_generate_diff(self.OBSERVED_PATTERN, self.config_pattern))
+
+        # 3. Payload
+        payload_ints_str = "empty"
+        if self.payload:
+            payload_ints = [f"0x{v:x}" for v in struct.unpack(f'<{len(self.payload)//4}I', self.payload)]
+            payload_ints_str = f"{{{', '.join(payload_ints)}}}"
+        lines.append(f"  - Payload: {len(self.payload)} bytes, Values: {payload_ints_str}")
+
+        # 4. Trailing separator (not a footer!)
+        if self.trailing_separator == self.OBSERVED_SEPARATOR:
+            lines.append(f"  - Trailing: 12 bytes (ends with separator-like pattern)")
+        else:
+            lines.append(f"  - Trailing: 12 bytes (DIFFERENT)")
+            lines.extend(_generate_diff(self.OBSERVED_SEPARATOR, self.trailing_separator))
+
+        return "\n".join(lines)
+
+@dataclass
 class ComponentPropertyRecord:
     """
     Parses the 132-byte structure that appears to define a component property.
@@ -502,11 +562,13 @@ class HypothesisParser:
             if i + 1 < len(valid_offsets):
                 end_offset = valid_offsets[i + 1]
             else:
-                # Last record: check if timestamp is after this offset
-                if timestamp_offset and timestamp_offset > start_offset:
-                    end_offset = timestamp_offset
-                else:
-                    end_offset = len(self.data)
+                # Last record
+                end_offset = len(self.data)
+            
+            # Check if timestamp falls within this record's range
+            # If so, limit the record to end before the timestamp
+            if timestamp_offset and start_offset < timestamp_offset < end_offset:
+                end_offset = timestamp_offset
             
             record_size = end_offset - start_offset
             if record_size <= 0:
@@ -762,11 +824,67 @@ class HypothesisParser:
                 # Exit the loop
                 break
 
+    def _check_and_claim_unknown_struct(self, offset: int, size: int) -> bool:
+        """
+        Checks if a data block matches the unknown 60-byte structure pattern.
+        WARNING: This structure only appears in sch5-8, disappears after.
+        Returns True if claimed, False otherwise.
+        """
+        # Observed pattern (UNSTABLE - disappears in sch9+)
+        PATTERN_SIG = UnknownStruct60Byte.OBSERVED_PATTERN
+        SEPARATOR_SIG = UnknownStruct60Byte.OBSERVED_SEPARATOR
+        MIN_SIZE = len(PATTERN_SIG) + len(SEPARATOR_SIG)  # Must be at least 20 bytes
+
+        if size < MIN_SIZE:
+            return False
+
+        record_data = self.data[offset : offset + size]
+        
+        # The pattern is not at a fixed position due to variable padding.
+        # We find the pattern block, then check if it ends with the separator.
+        pattern_pos = record_data.find(PATTERN_SIG)
+        
+        # Check if pattern is present and separator-like bytes at the end
+        if pattern_pos != -1 and record_data.endswith(SEPARATOR_SIG):
+            
+            payload_start = pattern_pos + len(PATTERN_SIG)
+            payload_end = size - len(SEPARATOR_SIG)
+            
+            # Ensure boundaries are logical
+            if payload_start <= payload_end:
+                padding = record_data[:pattern_pos]
+                pattern = record_data[pattern_pos:payload_start]
+                payload = record_data[payload_start:payload_end]
+                separator = record_data[payload_end:]
+                
+                self.curator.seek(offset)
+                self.curator.claim(
+                    "UnknownStruct60Byte",
+                    size,
+                    lambda d: UnknownStruct60Byte(
+                        offset=offset,
+                        data=record_data,
+                        padding=padding,
+                        config_pattern=pattern,
+                        payload=payload,
+                        trailing_separator=separator
+                    )
+                )
+                return True
+        
+        return False
+
     def _claim_as_generic_or_property_value(self, offset, size):
         """Helper to claim a chunk as either a PropertyValue or a GenericRecord."""
         if size <= 0:
             return
 
+        # --- THE REFACTOR ---
+        # 1. Try to claim as the hypothetical unknown structure FIRST (only appears in some files).
+        if self._check_and_claim_unknown_struct(offset, size):
+            return  # Success, we are done.
+
+        # --- The rest of the function remains the same ---
         record_data = self.data[offset : offset + size]
         property_value_info = self._check_property_value(record_data)
         
