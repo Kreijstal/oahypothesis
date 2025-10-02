@@ -64,9 +64,19 @@ def render_report(regions: List[Region], title: str = "Binary Analysis Report"):
             summarized_hex_dump(region.raw_data, indent="  ")
             
         elif isinstance(region, ClaimedRegion):
-            # Render claimed data in compact form
+            # Render claimed data, handling multi-line __str__ for detailed views
+            base_info = f"[{region.name}]  Offset: 0x{region.start:x}, Size: {region.size} bytes"
             parsed_str = str(region.parsed_value) if region.parsed_value is not None else ""
-            print(f"[{region.name}]  Offset: 0x{region.start:x}, Size: {region.size} bytes  {parsed_str}")
+
+            if '\n' in parsed_str:
+                # The first line of the __str__ is part of the header
+                first_line, *rest_lines = parsed_str.split('\n')
+                print(f"{base_info} {first_line}")
+                for line in rest_lines:
+                    print(f"  {line}") # Indent subsequent lines
+            else:
+                # Print in a single compact line
+                print(f"{base_info}  {parsed_str}")
 
 
 def render_regions_to_string(regions: List[Region], title: str = "Binary Analysis Report") -> str:

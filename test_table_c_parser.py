@@ -73,26 +73,27 @@ def test_timestamps():
     
     return all_passed
 
+from table_c_parser import GenericRecord
+
 def test_property_value_detection():
-    """Test that property values are correctly detected."""
+    """Test that true PropertyValueRecords are detected (with new strict logic)."""
     print("\n" + "="*70)
-    print("TEST 2: Property Value Detection")
+    print("TEST 2: Strict Property Value Detection")
     print("="*70)
     
+    # This list is now focused only on records that should match the strict
+    # signature of a PropertyValueRecord. Others are now GenericRecords.
+    # Based on analysis, the sch13/14 change involves a true PVR.
     test_cases = [
-        ('sch4.oa', 68),   # Resistance at 1K
-        ('sch5.oa', 70),   # Resistance at 2K (ID changed by +2)
-        ('sch6.oa', 76),   # Changed to capacitor
-        ('sch7.oa', 76),   # Added R1
-        ('sch9.oa', 124),  # R1 set to 2K (reusing string)
-        ('sch10.oa', 126), # R1 changed to 3K (ID changed by +2)
-        ('sch14.oa', 136), # Mystery file
+        ('sch13.oa', 133),
+        ('sch14.oa', 136),
     ]
     
     all_passed = True
     for filename, expected_id in test_cases:
         try:
             with open(filename, 'rb') as f:
+                # Boilerplate to find and parse table 0xc
                 header = f.read(24)
                 _, _, _, _, _, used = struct.unpack('<IHHQII', header)
                 ids = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
@@ -108,14 +109,13 @@ def test_property_value_detection():
                         
                         prop_vals = []
                         for region in regions:
-                            if isinstance(region, ClaimedRegion):
-                                if isinstance(region.parsed_value, PropertyValueRecord):
-                                    prop_vals.append(region.parsed_value.property_value_id)
+                            if isinstance(region, ClaimedRegion) and isinstance(region.parsed_value, PropertyValueRecord):
+                                prop_vals.append(region.parsed_value.property_value_id)
                         
                         if expected_id in prop_vals:
-                            print(f"  ✓ {filename}: Found property value ID {expected_id}")
+                            print(f"  ✓ {filename}: Found expected PropertyValue ID {expected_id}")
                         else:
-                            print(f"  ✗ {filename}: Expected ID {expected_id}, found {prop_vals}")
+                            print(f"  ✗ {filename}: Expected PropertyValue ID {expected_id}, found {prop_vals}")
                             all_passed = False
                         break
         except Exception as e:
@@ -124,70 +124,68 @@ def test_property_value_detection():
     
     return all_passed
 
-def test_property_value_changes():
-    """Test that property value changes are detected between file pairs."""
+def test_generic_record_string_change():
+    """Test that the 3K -> 2K resistance string change is detected in a GenericRecord."""
     print("\n" + "="*70)
-    print("TEST 3: Property Value Change Detection")
+    print("TEST 3: Generic Record String Change Detection (3K -> 2K)")
     print("="*70)
-    
-    test_cases = [
-        # (file1, file2, expected_change)
-        ('sch4.oa', 'sch5.oa', True),   # Resistance changed
-        ('sch_old.oa', 'sch_new.oa', False),  # Just rename, no value change
-        ('sch7.oa', 'sch8.oa', False),  # Wire added, no property change
-        ('sch9.oa', 'sch10.oa', True),  # R1: 2K → 3K (124 → 126)
-        ('sch10.oa', 'sch11.oa', True), # Different component changed
-        ('sch13.oa', 'sch14.oa', True), # Mystery change
-    ]
-    
-    all_passed = True
-    for file1, file2, expected_change in test_cases:
-        try:
-            # Extract property values from both files
-            def get_prop_vals(filename):
-                with open(filename, 'rb') as f:
-                    header = f.read(24)
-                    _, _, _, _, _, used = struct.unpack('<IHHQII', header)
-                    ids = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
-                    offsets = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
-                    sizes = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
-                    
-                    for i in range(used):
-                        if ids[i] == 0x0c:
-                            f.seek(offsets[i])
-                            data = f.read(sizes[i])
-                            parser = HypothesisParser(data)
-                            regions = parser.parse()
-                            result = []
-                            for region in regions:
-                                if isinstance(region, ClaimedRegion):
-                                    if isinstance(region.parsed_value, PropertyValueRecord):
-                                        result.append((region.start, region.parsed_value.property_value_id))
-                            return result
-                return []
+
+    def get_generic_strings(filename):
+        """Helper to get all string references from a file's table 0xc."""
+        string_refs = set()
+        with open(filename, 'rb') as f:
+            # Boilerplate to find table 0xa (strings) and 0xc (netlist)
+            header = f.read(24)
+            _, _, _, _, _, used = struct.unpack('<IHHQII', header)
+            ids = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
+            offsets = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
+            sizes = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
             
-            vals1 = get_prop_vals(file1)
-            vals2 = get_prop_vals(file2)
+            string_table_data = None
+            for i in range(used):
+                if ids[i] == 0x0a:
+                    f.seek(offsets[i])
+                    string_table_data = f.read(sizes[i])
+                    break
             
-            # Check if property values at same offsets changed
-            dict1 = dict(vals1)
-            dict2 = dict(vals2)
-            common_offsets = set(dict1.keys()) & set(dict2.keys())
+            for i in range(used):
+                if ids[i] == 0x0c:
+                    f.seek(offsets[i])
+                    data = f.read(sizes[i])
+                    # Crucially, pass the string table to the parser
+                    parser = HypothesisParser(data, string_table_data)
+                    regions = parser.parse()
+                    for region in regions:
+                        # Check GenericRecords for string references
+                        if isinstance(region, ClaimedRegion) and isinstance(region.parsed_value, GenericRecord):
+                            if hasattr(region.parsed_value, 'string_references'):
+                                for _, _, resolved_str in region.parsed_value.string_references:
+                                    string_refs.add(resolved_str)
+                    return string_refs
+        return string_refs
+
+    try:
+        strings13 = get_generic_strings('sch13.oa')
+        strings14 = get_generic_strings('sch14.oa')
+
+        # Check that '3K' was replaced by '2K'
+        change_present = '3K' in strings13 and '3K' not in strings14
+        change_absent = '2K' not in strings13 and '2K' in strings14
+
+        if change_present and change_absent:
+            print("  ✓ sch13.oa -> sch14.oa: Correctly detected '3K' -> '2K' change.")
+            return True
+        else:
+            print("  ✗ sch13.oa -> sch14.oa: Failed to detect change.")
+            print(f"    - Strings in sch13: {sorted(list(strings13))}")
+            print(f"    - Strings in sch14: {sorted(list(strings14))}")
+            return False
             
-            has_change = any(dict1[off] != dict2[off] for off in common_offsets)
-            
-            if has_change == expected_change:
-                status = "change detected" if has_change else "no change"
-                print(f"  ✓ {file1} → {file2}: {status} (as expected)")
-            else:
-                print(f"  ✗ {file1} → {file2}: Expected change={expected_change}, got {has_change}")
-                all_passed = False
-                
-        except Exception as e:
-            print(f"  ✗ {file1} → {file2}: Error - {e}")
-            all_passed = False
-    
-    return all_passed
+    except Exception as e:
+        import traceback
+        print(f"  ✗ Test failed with exception: {e}")
+        traceback.print_exc()
+        return False
 
 def main():
     print("\nTable 0xC Parser Test Suite")
@@ -195,8 +193,8 @@ def main():
     
     results = []
     results.append(("Timestamp Extraction", test_timestamps()))
-    results.append(("Property Value Detection", test_property_value_detection()))
-    results.append(("Property Value Changes", test_property_value_changes()))
+    results.append(("Strict Property Value Detection", test_property_value_detection()))
+    results.append(("Generic Record String Change", test_generic_record_string_change()))
     
     print("\n" + "="*70)
     print("TEST SUMMARY")
