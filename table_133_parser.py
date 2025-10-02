@@ -1,9 +1,8 @@
-
 # table_133_parser.py - Parser for Table 0x133
 import struct
 from dataclasses import dataclass, field
 from typing import List
-from oaparser import BinaryCurator
+from oaparser import BinaryCurator, Region
 
 @dataclass
 class ParsedTable133:
@@ -26,10 +25,9 @@ class Table133Parser:
     def __init__(self, data: bytes):
         self.data = data
         self.parsed_data = ParsedTable133()
+        self.curator = BinaryCurator(self.data)
 
-    def parse(self):
-        curator = BinaryCurator(self.data)
-        
+    def parse(self) -> List[Region]:
         # Parse the ENTIRE table into integers and claim each
         int_array = []
         cursor = 0
@@ -41,14 +39,14 @@ class Table133Parser:
             
             # Determine if this is a special value
             if val == 0xffffffff:
-                label = f"Integer[{index}] - SEPARATOR"
+                label = f"Int[{index}]SEP"
             elif index > 0 and int_array[index-1] == 1 and 1 < val < 1000:
-                label = f"Integer[{index}] - Possible Counter"
+                label = f"Int[{index}]CNT"
             else:
-                label = f"Integer[{index}]"
+                label = f"Int[{index}]"
             
-            curator.seek(cursor)
-            curator.claim(
+            self.curator.seek(cursor)
+            self.curator.claim(
                 label,
                 4,
                 lambda d, v=val: f"{v} (0x{v:x})"
@@ -68,26 +66,7 @@ class Table133Parser:
         # Apply the heuristic to find the counter
         self._find_counter()
 
-        # Generate report
-        lines = [f"Table 0x133: {len(self.data)} bytes"]
-        lines.append("="*80)
-        lines.append(f"Contains {len(int_array)} 32-bit integers")
-        lines.append("")
-        lines.append(curator.report())
-        
-        # Add hypothesis section
-        if self.parsed_data.counter_found:
-            lines.append("")
-            lines.append("="*80)
-            lines.append("[Hypothesis]")
-            lines.append(f"  Structural Change Counter found at index {self.parsed_data.counter_index}")
-            lines.append(f"  Counter Value: {self.parsed_data.found_counter}")
-        
-        if self.parsed_data.separator_index >= 0:
-            lines.append("")
-            lines.append(f"  Separator (0xffffffff) found at index {self.parsed_data.separator_index}")
-        
-        return "\n".join(lines)
+        return self.curator.get_regions()
 
     def _find_counter(self):
         """
@@ -101,4 +80,3 @@ class Table133Parser:
                 self.parsed_data.found_counter = arr[i+1]
                 self.parsed_data.counter_found = True
                 return
-

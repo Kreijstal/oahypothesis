@@ -60,28 +60,15 @@ def render_report(regions: List[Region], title: str = "Binary Analysis Report"):
     print("=" * 80)
     
     for region in regions:
-        print()
-        
         if isinstance(region, UnclaimedRegion):
             # Render unclaimed data with hex dump
-            print(f"[UNCLAIMED DATA]")
-            print(f"  Offset: 0x{region.start:x}, Size: {region.size} bytes")
-            summarized_hex_dump(region.raw_data)
+            print(f"[UNCLAIMED DATA]  Offset: 0x{region.start:x}, Size: {region.size} bytes")
+            summarized_hex_dump(region.raw_data, indent="  ")
             
         elif isinstance(region, ClaimedRegion):
-            # Render claimed data by delegating to the parsed object's __str__
-            print(f"[{region.name}]")
-            print(f"  Offset: 0x{region.start:x}, Size: {region.size} bytes")
-            
-            if region.parsed_value is not None:
-                # Polymorphic display: The object knows how to render itself
-                print(str(region.parsed_value))
-            else:
-                # Fallback: show hex dump if no parsed value
-                print("  Raw Hex:")
-                summarized_hex_dump(region.raw_data, indent="    ")
-        
-        print("-" * 80)
+            # Render claimed data in compact form
+            parsed_str = str(region.parsed_value) if region.parsed_value is not None else ""
+            print(f"[{region.name}]  Offset: 0x{region.start:x}, Size: {region.size} bytes  {parsed_str}")
     
     print("=" * 80)
 
@@ -98,11 +85,8 @@ def render_regions_to_string(regions: List[Region], title: str = "Binary Analysi
     lines.append("=" * 80)
     
     for region in regions:
-        lines.append("")
-        
         if isinstance(region, UnclaimedRegion):
-            lines.append(f"[UNCLAIMED DATA]")
-            lines.append(f"  Offset: 0x{region.start:x}, Size: {region.size} bytes")
+            lines.append(f"[UNCLAIMED DATA]  Offset: 0x{region.start:x}, Size: {region.size} bytes")
             
             # Collect hex dump lines
             i = 0
@@ -125,24 +109,8 @@ def render_regions_to_string(regions: List[Region], title: str = "Binary Analysi
                     i += 16
             
         elif isinstance(region, ClaimedRegion):
-            lines.append(f"[{region.name}]")
-            lines.append(f"  Offset: 0x{region.start:x}, Size: {region.size} bytes")
-            
-            if region.parsed_value is not None:
-                lines.append(str(region.parsed_value))
-            else:
-                lines.append("  Raw Hex:")
-                # Collect hex dump
-                i = 0
-                while i < len(region.raw_data):
-                    end = min(i + 16, len(region.raw_data))
-                    chunk = region.raw_data[i:end]
-                    hex_part = ' '.join(f'{b:02x}' for b in chunk)
-                    ascii_part = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in chunk)
-                    lines.append(f"    {i:04x}: {hex_part:<48} |{ascii_part}|")
-                    i += 16
-        
-        lines.append("-" * 80)
+            parsed_str = str(region.parsed_value) if region.parsed_value is not None else ""
+            lines.append(f"[{region.name}]  Offset: 0x{region.start:x}, Size: {region.size} bytes  {parsed_str}")
     
     lines.append("=" * 80)
     return "\n".join(lines)

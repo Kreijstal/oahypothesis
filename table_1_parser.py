@@ -12,17 +12,18 @@ import struct
 import datetime
 from dataclasses import dataclass
 from typing import List
-from oaparser import BinaryCurator
+from oaparser import BinaryCurator, Region
 
 @dataclass
 class Table1Parser:
     """Parser for Table 0x1 which contains global metadata."""
     data: bytes
     
-    def parse(self) -> str:
-        """Parse Table 0x1 and return a formatted string representation."""
+    def parse(self) -> List[Region]:
+        """Parse Table 0x1 and return regions."""
         if len(self.data) < 128:
-            return f"Table 0x1 (Global Metadata): {len(self.data)} bytes (too small to parse)"
+            curator = BinaryCurator(self.data)
+            return curator.get_regions()
         
         curator = BinaryCurator(self.data)
         
@@ -98,35 +99,13 @@ class Table1Parser:
             # Claim each integer in the array
             for i in range(num_ints):
                 curator.claim(
-                    f"Array[{i}]",
+                                        f"Array[{i}]",
                     4,
                     lambda d, idx=i: f"{struct.unpack('<I', d)[0]} (0x{struct.unpack('<I', d)[0]:x})"
                 )
         
-        # Generate report
-        lines = [f"Table 0x1 (Global Metadata): {len(self.data)} bytes"]
-        lines.append("="*80)
-        lines.append("")
-        lines.append(curator.report())
-        
-        # Add summary statistics
-        if len(self.data) > array_start:
-            num_ints = (len(self.data) - array_start) // 4
-            all_vals = [struct.unpack_from('<I', self.data, array_start + i*4)[0] 
-                       for i in range(num_ints)]
-            non_zero = [v for v in all_vals if v != 0]
-            
-            lines.append("")
-            lines.append("="*80)
-            lines.append(f"Array Statistics:")
-            lines.append(f"  Total integers: {num_ints}")
-            lines.append(f"  Non-zero values: {len(non_zero)}/{num_ints}")
-            if non_zero:
-                lines.append(f"  Min value: {min(non_zero)}")
-                lines.append(f"  Max value: {max(non_zero)}")
-        
-        lines.append("="*80)
-        return "\n".join(lines)
+        return curator.get_regions()
+
 
 def parse_table_1(data: bytes) -> str:
     """Convenience function to parse Table 0x1."""

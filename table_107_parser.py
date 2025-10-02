@@ -31,14 +31,10 @@ class ObjectEditRecord:
 
     def __str__(self) -> str:
         """Renders this single record for the final report."""
-        lines = [
-            f"  - Record Type: '{self.record_type}'",
-            f"  - Raw Value:    {self.raw_value} (0x{self.raw_value:x})"
-        ]
+        result = f"Type: {self.record_type}, Value: {self.raw_value} (0x{self.raw_value:x})"
         if self.string_index is not None:
-            lines.append(f"  - -> String Index:  {self.string_index}")
-            lines.append(f"  - -> Resolved Name: '{self.resolved_name or '???'}'")
-        return "\n".join(lines)
+            result += f", String[{self.string_index}]: '{self.resolved_name or '???'}'"
+        return result
 
 # --- The Parser Class ---
 

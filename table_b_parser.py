@@ -1,6 +1,7 @@
 # table_b_parser.py - Focused parser for property list table 0xb
 import struct
-from oaparser import BinaryCurator
+from typing import List
+from oaparser import BinaryCurator, Region
 
 class TableBParser:
     """
@@ -13,26 +14,24 @@ class TableBParser:
     - Record List: An array of 4-byte records following the count.
     """
 
-    def __init__(self, data):
+    def __init__(self, data: bytes):
         self.data = data
         self.records = []
+        self.curator = BinaryCurator(self.data)
 
-    def parse(self):
+    def parse(self) -> List[Region]:
         """
-        Parses the table data according to the structured hypothesis.
-        Returns a formatted string summary of the parsed data.
+        Parses the table data and returns regions.
         """
         if len(self.data) < 224:  # header_size + count_offset
-            return f"Table 0xb: Too small ({len(self.data)} bytes)"
-        
-        curator = BinaryCurator(self.data)
+            return self.curator.get_regions()
         
         # Claim the 220-byte header (currently opaque)
-        curator.claim("Header (opaque block)", 220, lambda d: "Content not yet fully understood")
+        self.curator.claim("Header", 220, lambda d: "opaque")
         
         # Claim the record count
         record_count = struct.unpack_from('<I', self.data, 220)[0]
-        curator.claim("Record Count", 4, lambda d: f"{struct.unpack('<I', d)[0]} records")
+        self.curator.claim("RecordCount", 4, lambda d: f"{struct.unpack('<I', d)[0]} records")
         
         # Claim each 4-byte record
         expected_records = min(record_count, (len(self.data) - 224) // 4)
@@ -43,12 +42,12 @@ class TableBParser:
             val_low = record_val & 0xFFFF
             val_high = (record_val >> 16) & 0xFFFF
             
-            curator.seek(offset)
-            curator.claim(
-                f"Property Record[{i}]",
+            self.curator.seek(offset)
+            self.curator.claim(
+                f"Prop[{i}]",
                 4,
                 lambda d, v=record_val, l=val_low, h=val_high: 
-                    f"0x{v:08x} (Low=0x{l:04x}, High=0x{h:04x})"
+                    f"0x{v:08x} (L:0x{l:04x} H:0x{h:04x})"
             )
             
             # Store the parsed record for potential external use
@@ -60,14 +59,4 @@ class TableBParser:
                 "high_word": val_high
             })
         
-        # Generate report
-        lines = [f"Table 0xb (Property List): {len(self.data)} bytes"]
-        lines.append("="*80)
-        lines.append("")
-        lines.append(curator.report())
-        
-        if record_count > expected_records:
-            lines.append("")
-            lines.append(f"[WARNING] Record count indicates {record_count} records, but only {expected_records} could be read")
-        
-        return "\n".join(lines)
+        return self.curator.get_regions()
