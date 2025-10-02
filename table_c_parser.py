@@ -84,36 +84,36 @@ class NetUpdateRecord:
         header_parts = [f"NetUpdate Type:{format_int(self.record_type)}"]
         header_parts.append(f"BlockSize:{format_int(self.net_block_size)}")
         header_parts.append(f"RelatedSize:{format_int(self.related_data_size)}")
-        
+
         if self.string_references:
             strs = [f'"{r[2]}"' for r in self.string_references[:2]]
             header_parts.append(f"Strings:{','.join(strs)}")
-        
+
         lines = [" ".join(header_parts)]
-        
+
         # Display the unparsed_data content as 32-bit integers
         if self.unparsed_data:
             lines.append("Content (summarized as 32-bit integers):")
-            
+
             # Pad data to 4-byte alignment
             data = self.unparsed_data
             padding = len(data) % 4
             if padding != 0:
                 data += b'\x00' * (4 - padding)
-            
+
             int_array = [struct.unpack_from('<I', data, i)[0] for i in range(0, len(data), 4)]
-            
+
             # Display integers with run-length encoding for repeated values
             i = 0
             while i < len(int_array):
                 num = int_array[i]
-                
+
                 # Find how many times this number repeats consecutively
                 j = i + 1
                 while j < len(int_array) and int_array[j] == num:
                     j += 1
                 repeat_count = j - i
-                
+
                 # Check if this integer's byte offset corresponds to a string reference
                 string_annotation = ""
                 byte_offset_start = i * 4
@@ -122,15 +122,15 @@ class NetUpdateRecord:
                     if byte_offset_start <= str_offset < byte_offset_end:
                         string_annotation = f' [="{resolved_str}"]'
                         break
-                
+
                 # Format the output line
                 line = f"- Index[{i:03d}]: {num} (0x{num:x}){string_annotation}"
                 if repeat_count > 1:
                     line += f" (repeats {repeat_count} times)"
                 lines.append(line)
-                
+
                 i = j  # Jump the index forward past the repeated items
-        
+
         return "\n".join(lines)
 
 @dataclass
@@ -235,7 +235,7 @@ class HypothesisParser:
         # PASS 1: Parse header
         try:
             header_end = self._parse_header_with_curator()
-            
+
             # PASS 2: Find all separators first to identify timestamp
             separator_positions = []
             cursor = header_end
@@ -245,7 +245,7 @@ class HypothesisParser:
                     separator_positions.append(sep_info)
                     cursor += 16
                     continue
-                    
+
                 # Skip other structures for now
                 if cursor + 12 <= len(self.data):
                     t = struct.unpack_from('<I', self.data, cursor)[0]
@@ -258,7 +258,7 @@ class HypothesisParser:
                             aligned_size = full_size + (4-rem if rem != 0 else 0)
                             cursor += aligned_size
                             continue
-                
+
                 # Check for padding
                 if cursor + 16 <= len(self.data):
                     v = struct.unpack_from('<I', self.data, cursor)[0]
@@ -271,12 +271,12 @@ class HypothesisParser:
                     if n >= 4:
                         cursor += n * 4
                         continue
-                
+
                 # Generic - advance by 4
                 cursor += 4
                 if cursor >= len(self.data):
                     break
-            
+
             # Find the last valid timestamp
             timestamp_pos = None
             timestamp_val = None
@@ -290,12 +290,12 @@ class HypothesisParser:
                         break
                     except (ValueError, OSError):
                         continue
-            
+
             # PASS 3: Claim all structures with timestamp marked
             cursor = header_end
             while cursor < len(self.data):
                 initial_cursor = cursor
-                
+
                 # Try separator
                 sep_info = self._check_separator(cursor)
                 if sep_info:
@@ -315,17 +315,17 @@ class HypothesisParser:
                         )
                     cursor += 16
                     continue
-                    
+
                 net_size = self._try_claim_net_update(cursor)
                 if net_size > 0:
                     cursor += net_size
                     continue
-                    
+
                 pad_size = self._try_claim_padding(cursor)
                 if pad_size > 0:
                     cursor += pad_size
                     continue
-                    
+
                 # Try to identify and claim property values or generic records
                 # If we can't identify it as a property value, claim as generic
                 claimed_size = self._try_claim_property_or_generic(cursor)
@@ -345,7 +345,7 @@ class HypothesisParser:
                     cursor += unclaimed_size
                     if cursor >= len(self.data):
                         break
-                    
+
         except Exception:
             pass
 
@@ -355,32 +355,32 @@ class HypothesisParser:
         """Parse header using BinaryCurator"""
         if len(self.data) < 16:
             return 0
-            
+
         header_id = struct.unpack_from('<I', self.data, 0)[0]
         end_offset = struct.unpack_from('<I', self.data, 8)[0]
-        
+
         if end_offset > len(self.data) or end_offset < 8:
             return 0
-            
+
         pointers = [struct.unpack_from('<Q', self.data, i)[0] for i in range(8, end_offset, 8)]
-        
+
         self.curator.claim(
             "Table Header",
             end_offset,
             lambda d: TableHeader(header_id, end_offset, pointers)
         )
-        
+
         return end_offset
 
     def _check_separator(self, cursor):
         """Check if there's a separator at this position, return (cursor, value) or None"""
         if cursor + 16 > len(self.data):
             return None
-            
+
         marker = struct.unpack_from('<I', self.data, cursor)[0]
         if marker != 0xffffffff:
             return None
-            
+
         value_64 = struct.unpack_from('<Q', self.data, cursor + 8)[0]
         return (cursor, value_64)
 
@@ -389,66 +389,66 @@ class HypothesisParser:
         sep_info = self._check_separator(cursor)
         if not sep_info:
             return 0
-            
+
         cursor_pos, value_64 = sep_info
-        
+
         self.curator.seek(cursor)
         self.curator.claim(
             "Separator",
             16,
             lambda d: SeparatorRecord(cursor_pos, value_64)
         )
-        
+
         return 16
 
     def _try_claim_net_update(self, cursor) -> int:
         """Try to claim a net update record at cursor position"""
         if cursor + 12 > len(self.data):
             return 0
-            
+
         t, s1, s2 = struct.unpack_from('<III', self.data, cursor)
-        
+
         if t != 19 or s1 != s2 or s1 <= 0:
             return 0
-            
+
         payload_size = s1
         if cursor + 12 + payload_size > len(self.data):
             return 0
-            
+
         unparsed_bytes = self.data[cursor + 12 : cursor + 12 + payload_size]
         full_record_size = 12 + payload_size
         rem = full_record_size % 4
         aligned_size = full_record_size + (4-rem if rem != 0 else 0)
-        
+
         # Find string references in this record
         string_refs = self._find_string_refs_in_data(unparsed_bytes)
-        
+
         self.curator.seek(cursor)
         self.curator.claim(
             "NetUpdate",
             aligned_size,
             lambda d: NetUpdateRecord(cursor, aligned_size, t, s1, s2, unparsed_bytes, string_refs)
         )
-        
+
         return aligned_size
 
     def _try_claim_padding(self, cursor) -> int:
         """Try to claim a padding block at cursor position"""
         if cursor + 16 > len(self.data):
             return 0
-            
+
         v = struct.unpack_from('<I', self.data, cursor)[0]
         n = 1
-        
+
         while cursor + (n + 1) * 4 <= len(self.data):
             next_val = struct.unpack_from('<I', self.data, cursor + n * 4)[0]
             if next_val != v:
                 break
             n += 1
-        
+
         if n < 4:
             return 0
-            
+
         size = n * 4
         self.curator.seek(cursor)
         self.curator.claim(
@@ -456,7 +456,7 @@ class HypothesisParser:
             size,
             lambda d: PaddingRecord(cursor, size, v)
         )
-        
+
         return size
 
     def _find_next_record_start(self, start_offset):
@@ -483,10 +483,10 @@ class HypothesisParser:
             return 0
 
         record_data = self.data[cursor:end]
-        
+
         # First, attempt to identify it as a PropertyValueRecord
         property_value_id = self._check_property_value(record_data)
-        
+
         self.curator.seek(cursor)
         string_refs = self._find_string_refs_in_data(record_data)
 
@@ -495,7 +495,7 @@ class HypothesisParser:
             self.curator.claim(
                 "PropertyValue",
                 size,
-                lambda d, p=cursor, s=size, rd=record_data, pid=property_value_id, sr=string_refs: 
+                lambda d, p=cursor, s=size, rd=record_data, pid=property_value_id, sr=string_refs:
                     PropertyValueRecord(p, s, rd, pid, sr)
             )
         else:
@@ -526,27 +526,27 @@ class HypothesisParser:
             val_at_index_7 = struct.unpack_from('<I', data, 7 * 4)[0]
             if 20 < val_at_index_7 < 200:
                 return val_at_index_7
-        
+
         return None
 
     def _find_string_refs_in_data(self, data: bytes) -> List[tuple]:
         """Find string references in a data block"""
         if not self.string_table_data:
             return []
-            
+
         string_refs = []
-        
+
         # Scan for 16-bit values that could be string offsets
         for offset in range(0, len(data) - 1, 2):
             val = struct.unpack_from('<H', data, offset)[0]
-            
+
             if val < 100 or val > 2048:
                 continue
-                
+
             resolved = self._lookup_string(val)
             if resolved and len(resolved) > 1:
                 string_refs.append((offset, val, resolved))
-        
+
         # Deduplicate
         seen = set()
         unique_refs = []
@@ -555,7 +555,7 @@ class HypothesisParser:
             if key not in seen:
                 seen.add(key)
                 unique_refs.append((offset, val, resolved))
-        
+
         return unique_refs
 
     def _parse_string_table(self):

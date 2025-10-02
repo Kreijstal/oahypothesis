@@ -4,8 +4,10 @@ Parser for Table 0x1 - Global Metadata and Version Information
 
 This table contains:
 - Version strings
-- Counters/timestamps
-- Arrays of table IDs or references
+- Platform and compiler information
+- Counters and timestamps at fixed offsets
+- A global 'last saved' timestamp at offset 0x9b4
+- Other unknown data structures
 """
 
 import struct
@@ -14,133 +16,116 @@ from dataclasses import dataclass
 from typing import List
 from oaparser import BinaryCurator, Region
 
+def parse_unix_timestamp(data: bytes, label: str = "") -> str:
+    """Parses a 4-byte little-endian Unix timestamp."""
+    if len(data) != 4:
+        return "[Invalid data length for timestamp]"
+    ts = struct.unpack('<I', data)[0]
+    result = f"{label}{ts} (0x{ts:x})"
+    if ts > 0:
+        try:
+            dt = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc)
+            result += f" → {dt.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+        except (ValueError, OSError):
+            result += " → [Invalid Timestamp]"
+    return result
+
+def parse_integer(data: bytes) -> str:
+    """Parses a 4-byte little-endian integer."""
+    val = struct.unpack('<I', data)[0]
+    return f"{val} (0x{val:x})"
+
 @dataclass
 class Table1Parser:
     """Parser for Table 0x1 which contains global metadata."""
     data: bytes
-    
+
     def parse(self) -> List[Region]:
         """Parse Table 0x1 and return regions."""
-        if len(self.data) < 128:
-            curator = BinaryCurator(self.data)
-            return curator.get_regions()
-        
         curator = BinaryCurator(self.data)
-        
-        # Claim the 6-byte header
+
+        # --- Sequentially claim known fields from the start ---
         curator.claim("Header bytes", 6, lambda d: ' '.join(f'{b:02x}' for b in d))
-        
-        # Extract and claim version strings (expecting 3)
+
         for i in range(3):
-            if curator.cursor >= len(self.data):
-                break
-                
+            if curator.cursor >= len(self.data): break
             string_start = curator.cursor
             string_end = self.data.find(b'\x00', string_start)
-            if string_end == -1:
-                break
-            
-            string_len = string_end - string_start + 1  # Include null terminator
-            
-            def make_string_parser(data):
-                try:
-                    return f'"{data.rstrip(b"\\x00").decode("utf-8", errors="replace")}"'
-                except:
-                    return "[DECODE ERROR]"
-            
-            curator.claim(f"Version String {i+1}", string_len, make_string_parser)
-            
-            # Strings are padded to 16-byte boundaries
-            next_aligned = ((string_end + 16) // 16) * 16
+            if string_end == -1: string_end = len(self.data)
+
+            string_len = string_end - string_start + 1
+            curator.claim(f"Version String {i+1}", string_len, lambda d: f'"{d.rstrip(b"\\x00").decode("utf-8", "replace")}"')
+
+            next_aligned = ((curator.cursor + 15) // 16) * 16
             padding_needed = next_aligned - curator.cursor
-            if padding_needed > 0 and curator.cursor < len(self.data):
-                curator.claim(f"Padding after String {i+1}", padding_needed, 
-                            lambda d: f"{len(d)} bytes")
-        
-        # Jump to known locations for counters/timestamps
-        if len(self.data) >= 0x70:
-            # Claim any gap before counters
-            if curator.cursor < 0x68:
-                gap_size = 0x68 - curator.cursor
-                curator.seek(curator.cursor)
-                curator.claim("Gap before counters", gap_size, lambda d: f"{len(d)} bytes")
-            
-            # Claim the two counters at 0x68 and 0x6c
+            if padding_needed > 0 and curator.cursor + padding_needed <= len(self.data):
+                curator.claim(f"Padding after String {i+1}", padding_needed, lambda d: f"{len(d)} bytes")
+
+        # --- Claim the Platform/Compiler Info block at 0x40 ---
+        if curator.cursor == 0x40 and len(self.data) >= 0x68:
+            def platform_info_parser(data):
+                header = struct.unpack('<Q', data[:8])[0]
+                platform_string = data[8:].split(b'\x00', 1)[0].decode('utf-8', 'replace')
+                return f"Platform: '{platform_string}', Header: {header} (0x{header:x})"
+
+            curator.claim("Platform Info", 40, platform_info_parser)
+
+        # --- Use absolute offsets to claim known, non-contiguous fields ---
+
+        # Claim Counters at 0x68
+        if len(self.data) >= 0x68 + 8:
             curator.seek(0x68)
-            curator.claim("Counter 1", 4, lambda d: f"{struct.unpack('<I', d)[0]} (0x{struct.unpack('<I', d)[0]:x})")
-            curator.claim("Counter 2", 4, lambda d: f"{struct.unpack('<I', d)[0]} (0x{struct.unpack('<I', d)[0]:x})")
-        
-        if len(self.data) >= 0x80:
-            # Claim the two timestamps at 0x70 and 0x78
+            curator.claim("Counter 1", 4, parse_integer)
+            curator.claim("Counter 2", 4, parse_integer)
+
+        # Claim 64-bit Timestamps at 0x70
+        if len(self.data) >= 0x70 + 16:
             curator.seek(0x70)
-            
-            def timestamp_parser(data):
-                ts = struct.unpack('<Q', data)[0]
-                ts_32 = ts & 0xFFFFFFFF
-                result = f"{ts_32} (0x{ts_32:x})"
-                if ts_32 > 0:
-                    try:
-                        dt = datetime.datetime.fromtimestamp(ts_32, datetime.timezone.utc)
-                        result += f" → {dt.strftime('%Y-%m-%d %H:%M:%S UTC')}"
-                    except:
-                        pass
-                return result
-            
-            curator.claim("Timestamp 1", 8, timestamp_parser)
-            curator.claim("Timestamp 2", 8, timestamp_parser)
-        
-        # Claim the array section starting at 0x80
-        array_start = 0x80
-        if len(self.data) > array_start:
-            curator.seek(array_start)
-            remaining = len(self.data) - array_start
-            num_ints = remaining // 4
-            
-            # Claim each integer in the array
-            for i in range(num_ints):
-                curator.claim(
-                                        f"Array[{i}]",
-                    4,
-                    lambda d, idx=i: f"{struct.unpack('<I', d)[0]} (0x{struct.unpack('<I', d)[0]:x})"
-                )
-        
+            def wide_timestamp_parser(data):
+                lo, hi = struct.unpack('<II', data)
+                return f"Lo: {lo} (0x{lo:x}), Hi: {parse_unix_timestamp(data[4:])}"
+
+            curator.claim("Timestamp 1 (64-bit)", 8, wide_timestamp_parser)
+            curator.claim("Timestamp 2 (64-bit)", 8, wide_timestamp_parser)
+
+        # Claim the known repeating save counters
+        known_counter_offsets = [0x998, 0x9c8, 0xa38]
+        for i, offset in enumerate(known_counter_offsets):
+            if len(self.data) >= offset + 4:
+                curator.seek(offset)
+                curator.claim(f"Save Counter Group {i+1}", 4, parse_integer)
+
+        # Claim the single known Global Timestamp at 0x9B4
+        if len(self.data) >= 0x9B4 + 4:
+            curator.seek(0x9B4)
+            curator.claim("Global Timestamp", 4, lambda d: parse_unix_timestamp(d))
+
         return curator.get_regions()
 
 
-def parse_table_1(data: bytes) -> str:
-    """Convenience function to parse Table 0x1."""
-    parser = Table1Parser(data)
-    return parser.parse()
-
 if __name__ == '__main__':
     import sys
-    
+    from oaparser.main import OAParser
+
     if len(sys.argv) != 2:
         print("Usage: python3 table_1_parser.py <oa_file>")
         sys.exit(1)
-    
+
     filepath = sys.argv[1]
-    
+
     try:
-        with open(filepath, 'rb') as f:
-            # Read header and table directory
-            header = f.read(24)
-            _, _, _, _, _, used = struct.unpack('<IHHQII', header)
-            ids = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
-            offsets = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
-            sizes = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
-            
-            # Find Table 0x1
-            if 0x1 in ids:
-                idx = ids.index(0x1)
-                f.seek(offsets[idx])
-                data = f.read(sizes[idx])
-                
-                parser = Table1Parser(data)
-                print(parser.parse())
-            else:
-                print("Table 0x1 not found in file")
-    
+        oa_parser = OAParser(filepath)
+        table_1 = oa_parser.get_table_by_id(0x1)
+
+        if table_1:
+            print(f"--- Parsing Table 0x1 (Size: {len(table_1.data)} bytes) ---")
+            parser = Table1Parser(table_1.data)
+            regions = parser.parse()
+            for region in regions:
+                print(region)
+        else:
+            print("Table 0x1 not found in file")
+
     except FileNotFoundError:
         print(f"ERROR: File not found at '{filepath}'")
         sys.exit(1)
