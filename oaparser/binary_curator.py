@@ -4,6 +4,61 @@ A small library for iterative reverse engineering of binary data blocks.
 The core idea is to "curate" a byte array by claiming known structures.
 The get_regions() method returns both the claimed structures and all the unclaimed
 raw data in between, ensuring no data is ever hidden.
+
+BINARY CURATOR PRINCIPLE - THE CARDINAL RULE:
+============================================
+
+Every byte claimed MUST be either interpreted OR asserted if the pattern is known.
+
+THE WORST MISTAKE: Claiming data without printing it.
+
+Example of WRONG usage:
+    # BAD: Claims 716 bytes but only shows 2 values
+    class TableHeader:
+        def __str__(self):
+            return f"Header ID: {self.header_id}, Pointers: {len(self.pointers)}"
+    
+    Output: "[Table Header] Size: 716 bytes Header ID: 4, Pointers: 89"
+    ❌ 716 bytes claimed, but actual pointer data is HIDDEN!
+
+Example of CORRECT usage:
+    # GOOD: Shows all claimed data
+    class TableHeader:
+        def __str__(self):
+            lines = [f"Header ID: {self.header_id}"]
+            lines.append(f"Pointer Count: {len(self.pointers)}")
+            for i, ptr in enumerate(self.pointers):
+                lines.append(f"  [{i:03d}]: 0x{ptr:016x}")
+            return "\\n".join(lines)
+    
+    Output: All 89 pointers are printed, accounting for all 716 bytes ✓
+
+LOSSLESS DATA PHILOSOPHY:
+========================
+
+1. ALL claimed data must be printed or asserted
+   - If you claim() a region, its __str__() must show the data
+   - Arrays must print all elements (or summarize with clear counts)
+   - Headers must print all fields
+
+2. Repeated patterns can be summarized LOSSLESSLY
+   - ✓ "0x00000000 x50" - clear and lossless
+   - ✓ "Value 123 repeats 10 times" - lossless
+   - ❌ "Header: 716 bytes" - data is hidden!
+
+3. Unknown data should remain UNCLAIMED
+   - Don't claim bytes you don't understand
+   - get_regions() will automatically report UnclaimedRegion
+   - This makes it obvious what needs reverse engineering
+
+4. Assert known patterns explicitly
+   - "Padding: 0x00 x24 (as expected)"
+   - "Magic: 0x12345678 (validated)"
+   - Make expectations visible in the output
+
+This principle CANNOT be programmatically tested, but users and agents
+must enforce it. Violating this rule defeats the purpose of reverse
+engineering, which is to UNDERSTAND the data format.
 """
 
 import struct
@@ -66,6 +121,21 @@ class BinaryCurator:
             parser_func: A function that takes the raw bytes of the claimed block 
                         and returns a parsed object. The object must have a __str__ 
                         method for rendering.
+        
+        IMPORTANT - BINARY CURATOR RULE:
+            The object returned by parser_func MUST have a __str__() method that
+            prints or interprets ALL the claimed bytes. Claiming bytes without
+            printing them is the WORST mistake in binary reverse engineering.
+            
+            Example violations to avoid:
+            - Claiming 716 bytes but only printing "Pointers: 89" ❌
+            - Claiming an array but only printing its length ❌
+            - Claiming a header but not showing all fields ❌
+            
+            Correct approach:
+            - Print all array elements (or summarize: "0x00 x50") ✓
+            - Print all header fields ✓
+            - Show all interpreted data ✓
         """
         if self.cursor + size > len(self.data):
             raise ValueError(f"Cannot claim {size} bytes from offset {self.cursor}; not enough data.")
