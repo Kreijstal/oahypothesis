@@ -282,6 +282,18 @@ class GenericRecord:
         lines.extend(summary_lines)
         return "\n".join(lines)
 
+def _generate_diff(expected: bytes, actual: bytes) -> List[str]:
+    """Helper to generate a simple hex diff."""
+    diff_lines = []
+    for i in range(0, len(expected), 16):
+        exp_chunk = expected[i:i+16]
+        act_chunk = actual[i:i+16]
+        if exp_chunk != act_chunk:
+            diff_lines.append(f"    {i:04x}:")
+            diff_lines.append(f"      - Expected: {' '.join(f'{b:02x}' for b in exp_chunk)}")
+            diff_lines.append(f"      - Actual:   {' '.join(f'{b:02x}' for b in act_chunk)}")
+    return diff_lines
+
 @dataclass
 class ComponentPropertyRecord:
     """
@@ -297,25 +309,42 @@ class ComponentPropertyRecord:
     padding: bytes
     value_id: int
 
+    # Assertion results
+    config_matches: bool
+    padding_matches: bool
+
+    # Class-level constants for expected patterns
+    EXPECTED_CONFIG = bytes.fromhex(
+        "06000000050000000100000000000000"
+        "02000000000000000300000000000000"
+        "04000000000000000003000000000000"
+        "a400000000000000a800000000000000"
+        "ac00000000000000b000000000000000"
+        "b400000000000000"
+    )
+    EXPECTED_PADDING = bytes.fromhex(
+        "04000000000000000400000000000000"
+        "04000000000000000400000000000000"
+    )
+
     def __str__(self):
         lines = [
             f"Component Property Record (132 bytes)",
             f"  - Structure Type ID: 0x{self.structure_id:016x}",
             f"  - Value ID: {self.value_id} (0x{self.value_id:x})",
-            f"  - Config/Pointers (88 bytes):",
         ]
-        # Hex dump for the unknown middle part
-        for i in range(0, len(self.config_and_pointers), 16):
-            chunk = self.config_and_pointers[i:i+16]
-            hex_part = ' '.join(f'{b:02x}' for b in chunk)
-            lines.append(f"      {i:04x}: {hex_part}")
 
-        lines.append(f"  - Padding (32 bytes):")
-        # Hex dump for padding
-        for i in range(0, len(self.padding), 16):
-            chunk = self.padding[i:i+16]
-            hex_part = ' '.join(f'{b:02x}' for b in chunk)
-            lines.append(f"      {i:04x}: {hex_part}")
+        if self.config_matches:
+            lines.append("  - Config/Pointers (88 bytes): OK (matches known pattern)")
+        else:
+            lines.append("  - Config/Pointers (88 bytes): MISMATCH")
+            lines.extend(_generate_diff(self.EXPECTED_CONFIG, self.config_and_pointers))
+
+        if self.padding_matches:
+            lines.append("  - Padding (32 bytes): OK (matches known pattern)")
+        else:
+            lines.append("  - Padding (32 bytes): MISMATCH")
+            lines.extend(_generate_diff(self.EXPECTED_PADDING, self.padding))
 
         return "\n".join(lines)
 
@@ -716,7 +745,9 @@ class HypothesisParser:
                         structure_id=struct.unpack_from('<Q', rd, 0)[0],
                         config_and_pointers=rd[8:96],
                         padding=rd[96:128],
-                        value_id=struct.unpack_from('<I', rd, 128)[0]
+                        value_id=struct.unpack_from('<I', rd, 128)[0],
+                        config_matches=(rd[8:96] == ComponentPropertyRecord.EXPECTED_CONFIG),
+                        padding_matches=(rd[96:128] == ComponentPropertyRecord.EXPECTED_PADDING)
                     )
                 )
 

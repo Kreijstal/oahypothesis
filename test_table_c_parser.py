@@ -214,18 +214,28 @@ def test_component_property_record_detection():
                     parser = HypothesisParser(data)
                     regions = parser.parse()
 
-                    found_ids = set()
+                    found_records = []
                     for region in regions:
                         if isinstance(region, ClaimedRegion) and isinstance(region.parsed_value, ComponentPropertyRecord):
-                            found_ids.add(region.parsed_value.value_id)
+                            found_records.append(region.parsed_value)
 
-                    if found_ids == expected_ids:
-                        print(f"  ✓ {filename}: Found all expected ComponentPropertyRecord IDs: {sorted(list(found_ids))}")
+                    found_ids = {rec.value_id for rec in found_records}
+
+                    # Verify all found records have matching static parts
+                    all_patterns_match = all(rec.config_matches and rec.padding_matches for rec in found_records)
+
+                    if found_ids == expected_ids and all_patterns_match:
+                        print(f"  ✓ {filename}: Found all expected IDs and all static patterns match.")
                         return True
                     else:
-                        print(f"  ✗ {filename}: Mismatch in found IDs.")
-                        print(f"    - Expected: {sorted(list(expected_ids))}")
-                        print(f"    - Found:    {sorted(list(found_ids))}")
+                        print(f"  ✗ {filename}: Test failed.")
+                        if found_ids != expected_ids:
+                            print(f"    - ID Mismatch: Expected {sorted(list(expected_ids))}, Found {sorted(list(found_ids))}")
+                        if not all_patterns_match:
+                            print("    - Pattern Mismatch: One or more records did not match expected static patterns.")
+                            for rec in found_records:
+                                if not rec.config_matches or not rec.padding_matches:
+                                    print(f"      - Record at offset 0x{rec.offset:x} (Value ID: {rec.value_id}) failed assertion.")
                         return False
     except Exception as e:
         import traceback
