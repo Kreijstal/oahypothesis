@@ -4,7 +4,7 @@ Test suite for BinaryCurator class
 """
 
 import struct
-from oaparser import BinaryCurator
+from oaparser import BinaryCurator, render_regions_to_string, UnclaimedRegion, ClaimedRegion
 
 def test_basic_claiming():
     """Test basic claim functionality"""
@@ -32,12 +32,13 @@ def test_basic_claiming():
     # Claim the string (but not the unclaimed bytes)
     curator.claim("Name String", 12, lambda b: f'"{b.decode("utf-8", errors="ignore").rstrip(chr(0))}"')
     
-    # Generate report
-    report = curator.report()
+    # Get regions and render report
+    regions = curator.get_regions()
+    report = render_regions_to_string(regions, "Test 1: Basic Claiming")
     print(report)
     
     # Verify that unclaimed data is shown
-    if "[Unclaimed Data]" in report and "ff ff ff" in report:
+    if "[UNCLAIMED DATA]" in report and "ff ff ff" in report:
         print("\n✓ PASSED: Unclaimed data is visible in report")
         return True
     else:
@@ -63,15 +64,16 @@ def test_seek_and_skip():
     curator.skip(20)
     curator.claim("4 bytes at offset 34", 4, lambda b: f"0x{struct.unpack('<I', b)[0]:08x}")
     
-    report = curator.report()
+    regions = curator.get_regions()
+    report = render_regions_to_string(regions, "Test 2: Seek and Skip")
     print(report)
     
     # Verify that we have unclaimed regions before, between, and after
-    if report.count("[Unclaimed Data]") == 3:
+    if report.count("[UNCLAIMED DATA]") == 3:
         print("\n✓ PASSED: Seek and skip work correctly")
         return True
     else:
-        print(f"\n✗ FAILED: Expected 3 unclaimed regions, found {report.count('[Unclaimed Data]')}")
+        print(f"\n✗ FAILED: Expected 3 unclaimed regions, found {report.count('[UNCLAIMED DATA]')}")
         return False
 
 def test_no_claims():
@@ -83,10 +85,11 @@ def test_no_claims():
     data = b"Test data that is never claimed"
     curator = BinaryCurator(data)
     
-    report = curator.report()
+    regions = curator.get_regions()
+    report = render_regions_to_string(regions, "Test 3: No Claims")
     print(report)
     
-    if "[Unclaimed Data]" in report and "Size: 31 bytes" in report:
+    if "[UNCLAIMED DATA]" in report and "Size: 31 bytes" in report:
         print("\n✓ PASSED: Unclaimed-only data is properly reported")
         return True
     else:
@@ -105,10 +108,11 @@ def test_full_claim():
     curator.claim("First Int", 4, lambda b: f"0x{struct.unpack('<I', b)[0]:08x}")
     curator.claim("Second Int", 4, lambda b: f"0x{struct.unpack('<I', b)[0]:08x}")
     
-    report = curator.report()
+    regions = curator.get_regions()
+    report = render_regions_to_string(regions, "Test 4: Full Claim")
     print(report)
     
-    if "[Unclaimed Data]" not in report:
+    if "[UNCLAIMED DATA]" not in report:
         print("\n✓ PASSED: No unclaimed data when everything is claimed")
         return True
     else:
@@ -126,15 +130,16 @@ def test_out_of_order_claims():
     
     # Claim regions out of order
     curator.seek(50)
-    curator.claim("Middle region", 10)
+    curator.claim("Middle region", 10, lambda b: f"{len(b)} bytes")
     
     curator.seek(10)
-    curator.claim("Early region", 10)
+    curator.claim("Early region", 10, lambda b: f"{len(b)} bytes")
     
     curator.seek(80)
-    curator.claim("Late region", 10)
+    curator.claim("Late region", 10, lambda b: f"{len(b)} bytes")
     
-    report = curator.report()
+    regions = curator.get_regions()
+    report = render_regions_to_string(regions, "Test 5: Out-of-Order Claims")
     print(report)
     
     # Check that regions are reported in order
