@@ -79,11 +79,59 @@ class NetUpdateRecord:
     string_references: List[tuple]  # [(offset_in_record, string_table_offset, resolved_string)]
 
     def __str__(self):
-        parts = [f"NetUpdate Type:{format_int(self.record_type)}"]
+        """Display all NetUpdate data according to Binary Curator principle."""
+        # Header line with type and block sizes
+        header_parts = [f"NetUpdate Type:{format_int(self.record_type)}"]
+        header_parts.append(f"BlockSize:{format_int(self.net_block_size)}")
+        header_parts.append(f"RelatedSize:{format_int(self.related_data_size)}")
+        
         if self.string_references:
             strs = [f'"{r[2]}"' for r in self.string_references[:2]]
-            parts.append(f"Strings:{','.join(strs)}")
-        return " ".join(parts)
+            header_parts.append(f"Strings:{','.join(strs)}")
+        
+        lines = [" ".join(header_parts)]
+        
+        # Display the unparsed_data content as 32-bit integers
+        if self.unparsed_data:
+            lines.append("Content (summarized as 32-bit integers):")
+            
+            # Pad data to 4-byte alignment
+            data = self.unparsed_data
+            padding = len(data) % 4
+            if padding != 0:
+                data += b'\x00' * (4 - padding)
+            
+            int_array = [struct.unpack_from('<I', data, i)[0] for i in range(0, len(data), 4)]
+            
+            # Display integers with run-length encoding for repeated values
+            i = 0
+            while i < len(int_array):
+                num = int_array[i]
+                
+                # Find how many times this number repeats consecutively
+                j = i + 1
+                while j < len(int_array) and int_array[j] == num:
+                    j += 1
+                repeat_count = j - i
+                
+                # Check if this integer's byte offset corresponds to a string reference
+                string_annotation = ""
+                byte_offset_start = i * 4
+                byte_offset_end = byte_offset_start + 4
+                for str_offset, _, resolved_str in self.string_references:
+                    if byte_offset_start <= str_offset < byte_offset_end:
+                        string_annotation = f' [="{resolved_str}"]'
+                        break
+                
+                # Format the output line
+                line = f"- Index[{i:03d}]: {num} (0x{num:x}){string_annotation}"
+                if repeat_count > 1:
+                    line += f" (repeats {repeat_count} times)"
+                lines.append(line)
+                
+                i = j  # Jump the index forward past the repeated items
+        
+        return "\n".join(lines)
 
 @dataclass
 class PropertyValueRecord:
