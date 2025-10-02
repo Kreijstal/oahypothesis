@@ -187,6 +187,52 @@ def test_generic_record_string_change():
         traceback.print_exc()
         return False
 
+from table_c_parser import ComponentPropertyRecord
+
+def test_component_property_record_detection():
+    """Test that the 132-byte ComponentPropertyRecord is correctly identified."""
+    print("\n" + "="*70)
+    print("TEST 4: Component Property Record Detection")
+    print("="*70)
+
+    filename = 'sch5.oa'
+    expected_ids = {12, 16, 28} # The value_ids we expect to find in this file
+
+    try:
+        with open(filename, 'rb') as f:
+            # Boilerplate to find and parse table 0xc
+            header = f.read(24)
+            _, _, _, _, _, used = struct.unpack('<IHHQII', header)
+            ids = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
+            offsets = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
+            sizes = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
+
+            for i in range(used):
+                if ids[i] == 0x0c:
+                    f.seek(offsets[i])
+                    data = f.read(sizes[i])
+                    parser = HypothesisParser(data)
+                    regions = parser.parse()
+
+                    found_ids = set()
+                    for region in regions:
+                        if isinstance(region, ClaimedRegion) and isinstance(region.parsed_value, ComponentPropertyRecord):
+                            found_ids.add(region.parsed_value.value_id)
+
+                    if found_ids == expected_ids:
+                        print(f"  ✓ {filename}: Found all expected ComponentPropertyRecord IDs: {sorted(list(found_ids))}")
+                        return True
+                    else:
+                        print(f"  ✗ {filename}: Mismatch in found IDs.")
+                        print(f"    - Expected: {sorted(list(expected_ids))}")
+                        print(f"    - Found:    {sorted(list(found_ids))}")
+                        return False
+    except Exception as e:
+        import traceback
+        print(f"  ✗ {filename}: Error - {e}")
+        traceback.print_exc()
+        return False
+
 def main():
     print("\nTable 0xC Parser Test Suite")
     print("="*70)
@@ -195,6 +241,7 @@ def main():
     results.append(("Timestamp Extraction", test_timestamps()))
     results.append(("Strict Property Value Detection", test_property_value_detection()))
     results.append(("Generic Record String Change", test_generic_record_string_change()))
+    results.append(("Component Property Record Detection", test_component_property_record_detection()))
     
     print("\n" + "="*70)
     print("TEST SUMMARY")

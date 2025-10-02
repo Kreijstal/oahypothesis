@@ -282,6 +282,43 @@ class GenericRecord:
         lines.extend(summary_lines)
         return "\n".join(lines)
 
+@dataclass
+class ComponentPropertyRecord:
+    """
+    Parses the 132-byte structure that appears to define a component property.
+    This structure has a static header and a dynamic value ID at the end.
+    """
+    offset: int
+    data: bytes  # The raw 132 bytes
+
+    # Parsed fields
+    structure_id: int
+    config_and_pointers: bytes
+    padding: bytes
+    value_id: int
+
+    def __str__(self):
+        lines = [
+            f"Component Property Record (132 bytes)",
+            f"  - Structure Type ID: 0x{self.structure_id:016x}",
+            f"  - Value ID: {self.value_id} (0x{self.value_id:x})",
+            f"  - Config/Pointers (88 bytes):",
+        ]
+        # Hex dump for the unknown middle part
+        for i in range(0, len(self.config_and_pointers), 16):
+            chunk = self.config_and_pointers[i:i+16]
+            hex_part = ' '.join(f'{b:02x}' for b in chunk)
+            lines.append(f"      {i:04x}: {hex_part}")
+
+        lines.append(f"  - Padding (32 bytes):")
+        # Hex dump for padding
+        for i in range(0, len(self.padding), 16):
+            chunk = self.padding[i:i+16]
+            hex_part = ' '.join(f'{b:02x}' for b in chunk)
+            lines.append(f"      {i:04x}: {hex_part}")
+
+        return "\n".join(lines)
+
 # --- Main Parser ---
 
 class HypothesisParser:
@@ -640,18 +677,73 @@ class HypothesisParser:
         self._claim_generic_or_property(offset, size)
     
     def _claim_generic_or_property(self, offset: int, size: int):
-        """Claim a block as either a PropertyValue or Generic record."""
+        """
+        Scans a block of data for ComponentPropertyRecord structures.
+        Any data surrounding these structures is claimed as generic or property value.
+        """
         if size <= 0:
             return
-            
-        record_data = self.data[offset:offset + size]
+
+        magic_number = b'\xa4\x00\x00\x00\x00\x00\x00\x00'
+        struct_size = 132
+
+        block_data = self.data[offset : offset + size]
+        cursor = 0
+
+        while cursor < size:
+            # Find the next occurrence of our magic number from the current cursor
+            found_pos = block_data.find(magic_number, cursor)
+
+            if found_pos != -1 and (size - found_pos) >= struct_size:
+                # Found a potential record.
+
+                # 1. Claim data *before* the found record as generic/property
+                pre_chunk_size = found_pos - cursor
+                if pre_chunk_size > 0:
+                    pre_chunk_offset = offset + cursor
+                    self._claim_as_generic_or_property_value(pre_chunk_offset, pre_chunk_size)
+
+                # 2. Claim the ComponentPropertyRecord itself
+                struct_offset = offset + found_pos
+                self.curator.seek(struct_offset)
+                struct_data = self.data[struct_offset : struct_offset + struct_size]
+                self.curator.claim(
+                    "ComponentPropertyRecord",
+                    struct_size,
+                    lambda d, p=struct_offset, rd=struct_data: ComponentPropertyRecord(
+                        offset=p,
+                        data=rd,
+                        structure_id=struct.unpack_from('<Q', rd, 0)[0],
+                        config_and_pointers=rd[8:96],
+                        padding=rd[96:128],
+                        value_id=struct.unpack_from('<I', rd, 128)[0]
+                    )
+                )
+
+                # 3. Update cursor to after the claimed struct
+                cursor = found_pos + struct_size
+            else:
+                # No more occurrences found, claim the rest of the block
+                remaining_size = size - cursor
+                if remaining_size > 0:
+                    remaining_offset = offset + cursor
+                    self._claim_as_generic_or_property_value(remaining_offset, remaining_size)
+                # Exit the loop
+                break
+
+    def _claim_as_generic_or_property_value(self, offset, size):
+        """Helper to claim a chunk as either a PropertyValue or a GenericRecord."""
+        if size <= 0:
+            return
+
+        record_data = self.data[offset : offset + size]
         property_value_info = self._check_property_value(record_data)
         
         self.curator.seek(offset)
         string_refs = self._find_string_refs_in_data(record_data)
         
         if property_value_info is not None:
-            # It's a known property value
+            # Claim as PropertyValue
             self.curator.claim(
                 "PropertyValue",
                 size,
