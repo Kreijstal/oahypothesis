@@ -49,6 +49,7 @@ class TableAParser:
         # Extract all null-terminated strings from remaining data
         string_buffer = self.data[20:]
         current_offset = 0
+        string_index = 0
         
         while current_offset < len(string_buffer):
             # Find the next null terminator
@@ -74,7 +75,7 @@ class TableAParser:
                     return parser
                 
                 self.curator.seek(20 + current_offset)
-                self.curator.claim(f"Str@0x{current_offset:04x}", string_len, make_parser(string_data))
+                self.curator.claim(f"Str[{string_index}]@0x{current_offset:04x}", string_len, make_parser(string_data))
                 
                 # Store for later enumeration
                 if string_data:
@@ -83,6 +84,8 @@ class TableAParser:
                         self.strings.append({'offset': current_offset, 'string': decoded_string})
                     except UnicodeDecodeError:
                         self.strings.append({'offset': current_offset, 'string': f'[ERROR]'})
+                
+                string_index += 1
             
             current_offset = null_pos + 1
         

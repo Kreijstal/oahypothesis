@@ -26,8 +26,9 @@ class TableBParser:
         if len(self.data) < 224:  # header_size + count_offset
             return self.curator.get_regions()
         
-        # Claim the 220-byte header (currently opaque)
-        self.curator.claim("Header", 220, lambda d: "opaque")
+        # Don't claim the 220-byte header since we don't understand it - leave it unclaimed
+        # Skip past it to claim the record count
+        self.curator.seek(220)
         
         # Claim the record count
         record_count = struct.unpack_from('<I', self.data, 220)[0]

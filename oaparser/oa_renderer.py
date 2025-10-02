@@ -55,9 +55,7 @@ def render_report(regions: List[Region], title: str = "Binary Analysis Report"):
         regions: List of Region objects (ClaimedRegion and UnclaimedRegion)
         title: Optional title for the report
     """
-    print("=" * 80)
-    print(title)
-    print("=" * 80)
+    print(f"\n{title}")
     
     for region in regions:
         if isinstance(region, UnclaimedRegion):
@@ -69,8 +67,6 @@ def render_report(regions: List[Region], title: str = "Binary Analysis Report"):
             # Render claimed data in compact form
             parsed_str = str(region.parsed_value) if region.parsed_value is not None else ""
             print(f"[{region.name}]  Offset: 0x{region.start:x}, Size: {region.size} bytes  {parsed_str}")
-    
-    print("=" * 80)
 
 
 def render_regions_to_string(regions: List[Region], title: str = "Binary Analysis Report") -> str:
@@ -80,9 +76,7 @@ def render_regions_to_string(regions: List[Region], title: str = "Binary Analysi
     This is useful for tests and for cases where we need the output as a string.
     """
     lines = []
-    lines.append("=" * 80)
-    lines.append(title)
-    lines.append("=" * 80)
+    lines.append(f"\n{title}")
     
     for region in regions:
         if isinstance(region, UnclaimedRegion):
@@ -112,5 +106,4 @@ def render_regions_to_string(regions: List[Region], title: str = "Binary Analysi
             parsed_str = str(region.parsed_value) if region.parsed_value is not None else ""
             lines.append(f"[{region.name}]  Offset: 0x{region.start:x}, Size: {region.size} bytes  {parsed_str}")
     
-    lines.append("=" * 80)
     return "\n".join(lines)
