@@ -282,6 +282,72 @@ class GenericRecord:
         lines.extend(summary_lines)
         return "\n".join(lines)
 
+def _generate_diff(expected: bytes, actual: bytes) -> List[str]:
+    """Helper to generate a simple hex diff."""
+    diff_lines = []
+    for i in range(0, len(expected), 16):
+        exp_chunk = expected[i:i+16]
+        act_chunk = actual[i:i+16]
+        if exp_chunk != act_chunk:
+            diff_lines.append(f"    {i:04x}:")
+            diff_lines.append(f"      - Expected: {' '.join(f'{b:02x}' for b in exp_chunk)}")
+            diff_lines.append(f"      - Actual:   {' '.join(f'{b:02x}' for b in act_chunk)}")
+    return diff_lines
+
+@dataclass
+class ComponentPropertyRecord:
+    """
+    Parses the 132-byte structure that appears to define a component property.
+    This structure has a static header and a dynamic value ID at the end.
+    """
+    offset: int
+    data: bytes  # The raw 132 bytes
+
+    # Parsed fields
+    structure_id: int
+    config_and_pointers: bytes
+    padding: bytes
+    value_id: int
+
+    # Assertion results
+    config_matches: bool
+    padding_matches: bool
+
+    # Class-level constants for expected patterns
+    EXPECTED_CONFIG = bytes.fromhex(
+        "06000000050000000100000000000000"
+        "02000000000000000300000000000000"
+        "04000000000000000003000000000000"
+        "a400000000000000a800000000000000"
+        "ac00000000000000b000000000000000"
+        "b400000000000000"
+    )
+    EXPECTED_PADDING = bytes.fromhex(
+        "04000000000000000400000000000000"
+        "04000000000000000400000000000000"
+    )
+
+    def __str__(self):
+        lines = [
+            f"Component Property Record (132 bytes)",
+            f"  - Structure Type ID: 0x{self.structure_id:016x}",
+            f"  - Value ID: {self.value_id} (0x{self.value_id:x})",
+        ]
+
+        if self.config_matches:
+            lines.append("  - Config/Pointers (88 bytes): OK (matches known pattern)")
+        else:
+            lines.append("  - Config/Pointers (88 bytes): MISMATCH")
+            lines.extend(_generate_diff(self.EXPECTED_CONFIG, self.config_and_pointers))
+
+        if self.padding_matches:
+            lines.append("  - Padding (32 bytes): OK (matches known pattern)")
+        else:
+            lines.append("  - Padding (32 bytes): MISMATCH")
+            lines.extend(_generate_diff(self.EXPECTED_PADDING, self.padding))
+
+        return "\n".join(lines)
+
 # --- Main Parser ---
 
 class HypothesisParser:
@@ -640,18 +706,75 @@ class HypothesisParser:
         self._claim_generic_or_property(offset, size)
     
     def _claim_generic_or_property(self, offset: int, size: int):
-        """Claim a block as either a PropertyValue or Generic record."""
+        """
+        Scans a block of data for ComponentPropertyRecord structures.
+        Any data surrounding these structures is claimed as generic or property value.
+        """
         if size <= 0:
             return
-            
-        record_data = self.data[offset:offset + size]
+
+        magic_number = b'\xa4\x00\x00\x00\x00\x00\x00\x00'
+        struct_size = 132
+
+        block_data = self.data[offset : offset + size]
+        cursor = 0
+
+        while cursor < size:
+            # Find the next occurrence of our magic number from the current cursor
+            found_pos = block_data.find(magic_number, cursor)
+
+            if found_pos != -1 and (size - found_pos) >= struct_size:
+                # Found a potential record.
+
+                # 1. Claim data *before* the found record as generic/property
+                pre_chunk_size = found_pos - cursor
+                if pre_chunk_size > 0:
+                    pre_chunk_offset = offset + cursor
+                    self._claim_as_generic_or_property_value(pre_chunk_offset, pre_chunk_size)
+
+                # 2. Claim the ComponentPropertyRecord itself
+                struct_offset = offset + found_pos
+                self.curator.seek(struct_offset)
+                struct_data = self.data[struct_offset : struct_offset + struct_size]
+                self.curator.claim(
+                    "ComponentPropertyRecord",
+                    struct_size,
+                    lambda d, p=struct_offset, rd=struct_data: ComponentPropertyRecord(
+                        offset=p,
+                        data=rd,
+                        structure_id=struct.unpack_from('<Q', rd, 0)[0],
+                        config_and_pointers=rd[8:96],
+                        padding=rd[96:128],
+                        value_id=struct.unpack_from('<I', rd, 128)[0],
+                        config_matches=(rd[8:96] == ComponentPropertyRecord.EXPECTED_CONFIG),
+                        padding_matches=(rd[96:128] == ComponentPropertyRecord.EXPECTED_PADDING)
+                    )
+                )
+
+                # 3. Update cursor to after the claimed struct
+                cursor = found_pos + struct_size
+            else:
+                # No more occurrences found, claim the rest of the block
+                remaining_size = size - cursor
+                if remaining_size > 0:
+                    remaining_offset = offset + cursor
+                    self._claim_as_generic_or_property_value(remaining_offset, remaining_size)
+                # Exit the loop
+                break
+
+    def _claim_as_generic_or_property_value(self, offset, size):
+        """Helper to claim a chunk as either a PropertyValue or a GenericRecord."""
+        if size <= 0:
+            return
+
+        record_data = self.data[offset : offset + size]
         property_value_info = self._check_property_value(record_data)
         
         self.curator.seek(offset)
         string_refs = self._find_string_refs_in_data(record_data)
         
         if property_value_info is not None:
-            # It's a known property value
+            # Claim as PropertyValue
             self.curator.claim(
                 "PropertyValue",
                 size,

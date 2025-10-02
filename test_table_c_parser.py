@@ -187,6 +187,62 @@ def test_generic_record_string_change():
         traceback.print_exc()
         return False
 
+from table_c_parser import ComponentPropertyRecord
+
+def test_component_property_record_detection():
+    """Test that the 132-byte ComponentPropertyRecord is correctly identified."""
+    print("\n" + "="*70)
+    print("TEST 4: Component Property Record Detection")
+    print("="*70)
+
+    filename = 'sch5.oa'
+    expected_ids = {12, 16, 28} # The value_ids we expect to find in this file
+
+    try:
+        with open(filename, 'rb') as f:
+            # Boilerplate to find and parse table 0xc
+            header = f.read(24)
+            _, _, _, _, _, used = struct.unpack('<IHHQII', header)
+            ids = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
+            offsets = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
+            sizes = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
+
+            for i in range(used):
+                if ids[i] == 0x0c:
+                    f.seek(offsets[i])
+                    data = f.read(sizes[i])
+                    parser = HypothesisParser(data)
+                    regions = parser.parse()
+
+                    found_records = []
+                    for region in regions:
+                        if isinstance(region, ClaimedRegion) and isinstance(region.parsed_value, ComponentPropertyRecord):
+                            found_records.append(region.parsed_value)
+
+                    found_ids = {rec.value_id for rec in found_records}
+
+                    # Verify all found records have matching static parts
+                    all_patterns_match = all(rec.config_matches and rec.padding_matches for rec in found_records)
+
+                    if found_ids == expected_ids and all_patterns_match:
+                        print(f"  ✓ {filename}: Found all expected IDs and all static patterns match.")
+                        return True
+                    else:
+                        print(f"  ✗ {filename}: Test failed.")
+                        if found_ids != expected_ids:
+                            print(f"    - ID Mismatch: Expected {sorted(list(expected_ids))}, Found {sorted(list(found_ids))}")
+                        if not all_patterns_match:
+                            print("    - Pattern Mismatch: One or more records did not match expected static patterns.")
+                            for rec in found_records:
+                                if not rec.config_matches or not rec.padding_matches:
+                                    print(f"      - Record at offset 0x{rec.offset:x} (Value ID: {rec.value_id}) failed assertion.")
+                        return False
+    except Exception as e:
+        import traceback
+        print(f"  ✗ {filename}: Error - {e}")
+        traceback.print_exc()
+        return False
+
 def main():
     print("\nTable 0xC Parser Test Suite")
     print("="*70)
@@ -195,6 +251,7 @@ def main():
     results.append(("Timestamp Extraction", test_timestamps()))
     results.append(("Strict Property Value Detection", test_property_value_detection()))
     results.append(("Generic Record String Change", test_generic_record_string_change()))
+    results.append(("Component Property Record Detection", test_component_property_record_detection()))
     
     print("\n" + "="*70)
     print("TEST SUMMARY")
