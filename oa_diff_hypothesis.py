@@ -175,8 +175,8 @@ def diff_oa_tables(file_old_path, file_new_path):
             print("  --- Structured Diff for Table 0x133 ---")
             parser_old = Table133Parser(data_old)
             parser_new = Table133Parser(data_new)
-            lines_old = parser_old.parse().split('\n')
-            lines_new = parser_new.parse().split('\n')
+            lines_old = str(parser_old.parse()).split('\n')
+            lines_new = str(parser_new.parse()).split('\n')
 
             diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
             
@@ -192,24 +192,132 @@ def diff_oa_tables(file_old_path, file_new_path):
         # --- SPECIALIZED DIFF FOR TABLE 0xc ---
         if table_id == 0xc:
             print("  --- Structured Diff for Table 0xc (Netlist Data) ---")
-            parser_old = HypothesisParser(data_old)
-            parser_old.parse()
-            lines_old = [str(r) for r in parser_old.records]
-
-            parser_new = HypothesisParser(data_new)
-            parser_new.parse()
-            lines_new = [str(r) for r in parser_new.records]
-
-            diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
             
-            # Print the resulting structured diff
-            diff_lines = list(diff)[2:] # Skip the ---/+++ file headers
-            if not diff_lines:
-                 print("  NOTE: Parsed structure is identical, but raw byte-level differences may exist.")
+            # Get string table for string resolution
+            string_table_old = oa_old.tables.get(0xa, {}).get('data')
+            string_table_new = oa_new.tables.get(0xa, {}).get('data')
+            
+            parser_old = HypothesisParser(data_old, string_table_old)
+            parser_old.parse()
+            
+            parser_new = HypothesisParser(data_new, string_table_new)
+            parser_new.parse()
+            
+            # For diffing, we want to show only the actual changes in content,
+            # not spurious differences caused by offset shifts.
+            # Strategy: For each record, extract its "signature" (type + key fields)
+            # and match records by signature, then show differences in matched records.
+            
+            def get_record_signature(record):
+                """Get a signature that identifies the record type and key content"""
+                record_type = type(record).__name__
+                if hasattr(record, 'property_value_id'):
+                    return (record_type, record.property_value_id)
+                elif hasattr(record, 'timestamp_val'):
+                    return (record_type, 'timestamp')
+                elif hasattr(record, 'record_type'):
+                    # NetUpdateRecord - use first few bytes of payload as signature
+                    payload_sig = record.unparsed_data[:min(16, len(record.unparsed_data))]
+                    return (record_type, payload_sig)
+                elif hasattr(record, 'value'):
+                    return (record_type, record.value)
+                elif hasattr(record, 'data'):
+                    # Generic record - use first few bytes as signature
+                    data_sig = record.data[:min(16, len(record.data))]
+                    return (record_type, data_sig)
+                else:
+                    return (record_type, str(record)[:50])
+            
+            # Build signature maps
+            old_by_sig = {}
+            for i, r in enumerate(parser_old.records):
+                sig = get_record_signature(r)
+                if sig not in old_by_sig:
+                    old_by_sig[sig] = []
+                old_by_sig[sig].append((i, r))
+            
+            new_by_sig = {}
+            for i, r in enumerate(parser_new.records):
+                sig = get_record_signature(r)
+                if sig not in new_by_sig:
+                    new_by_sig[sig] = []
+                new_by_sig[sig].append((i, r))
+            
+            # Find matching and non-matching records
+            changes = []
+            
+            # Check for removed records
+            for sig, old_records in old_by_sig.items():
+                if sig not in new_by_sig:
+                    for idx, rec in old_records:
+                        changes.append(('removed', idx, rec, None))
+            
+            # Check for added records
+            for sig, new_records in new_by_sig.items():
+                if sig not in old_by_sig:
+                    for idx, rec in new_records:
+                        changes.append(('added', None, None, rec))
+            
+            # Check for modified records (same signature but different content)
+            for sig in set(old_by_sig.keys()) & set(new_by_sig.keys()):
+                old_recs = old_by_sig[sig]
+                new_recs = new_by_sig[sig]
+                
+                # Match records one-to-one
+                for i in range(max(len(old_recs), len(new_recs))):
+                    old_rec = old_recs[i] if i < len(old_recs) else None
+                    new_rec = new_recs[i] if i < len(new_recs) else None
+                    
+                    if old_rec and new_rec:
+                        old_str = str(old_rec[1])
+                        new_str = str(new_rec[1])
+                        # Normalize offsets for comparison
+                        import re
+                        old_str = re.sub(r' at 0x[0-9a-f]+', ' at [offset]', old_str)
+                        old_str = re.sub(r'Offset 0x[0-9a-f]+:', 'Offset:', old_str)
+                        new_str = re.sub(r' at 0x[0-9a-f]+', ' at [offset]', new_str)
+                        new_str = re.sub(r'Offset 0x[0-9a-f]+:', 'Offset:', new_str)
+                        
+                        if old_str != new_str:
+                            changes.append(('modified', old_rec[0], old_rec[1], new_rec[1]))
+                    elif old_rec:
+                        changes.append(('removed', old_rec[0], old_rec[1], None))
+                    elif new_rec:
+                        changes.append(('added', None, None, new_rec[1]))
+            
+            # Sort changes by old index (for removed/modified) or by type
+            changes.sort(key=lambda x: (x[0], x[1] if x[1] is not None else 9999))
+            
+            if not changes:
+                print("  NOTE: Parsed structure is identical.")
             else:
-                for line in diff_lines:
-                    # Add extra indentation to fit our report format
-                    print(f"  {line}")
+                for change_type, old_idx, old_rec, new_rec in changes:
+                    if change_type == 'removed':
+                        print(f"  [-] Record {old_idx}: {type(old_rec).__name__} removed")
+                    elif change_type == 'added':
+                        print(f"  [+] New record: {type(new_rec).__name__} added")
+                    elif change_type == 'modified':
+                        print(f"  [~] Record {old_idx}: {type(old_rec).__name__} modified")
+                        # Show detailed diff for modified records
+                        old_str = str(old_rec)
+                        new_str = str(new_rec)
+                        # Normalize offsets
+                        import re
+                        old_str = re.sub(r' at 0x[0-9a-f]+', ' at [offset]', old_str)
+                        old_str = re.sub(r'Offset 0x[0-9a-f]+:', 'Offset:', old_str)
+                        new_str = re.sub(r' at 0x[0-9a-f]+', ' at [offset]', new_str)
+                        new_str = re.sub(r'Offset 0x[0-9a-f]+:', 'Offset:', new_str)
+                        
+                        old_lines = old_str.split('\n')
+                        new_lines = new_str.split('\n')
+                        diff = difflib.unified_diff(old_lines, new_lines, lineterm='')
+                        diff_lines = list(diff)[2:]  # Skip headers
+                        if diff_lines:
+                            for line in diff_lines[:20]:  # Limit to first 20 lines
+                                print(f"      {line}")
+                            if len(diff_lines) > 20:
+                                print(f"      ... ({len(diff_lines) - 20} more lines)")
+            
             print("\n")
             continue # Skip the generic hex diff for this table
 
