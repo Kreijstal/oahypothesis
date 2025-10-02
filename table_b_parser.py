@@ -22,42 +22,11 @@ class TableBParser:
     def parse(self) -> List[Region]:
         """
         Parses the table data and returns regions.
+        
+        NOTE: The structure of this table is not understood. Per the project's
+        binary curator rules, we are leaving the entire table as UNCLAIMED
+        rather than making incorrect claims about its structure.
         """
-        if len(self.data) < 224:  # header_size + count_offset
-            return self.curator.get_regions()
-        
-        # Don't claim the 220-byte header since we don't understand it - leave it unclaimed
-        # Skip past it to claim the record count
-        self.curator.seek(220)
-        
-        # Claim the record count
-        record_count = struct.unpack_from('<I', self.data, 220)[0]
-        self.curator.claim("RecordCount", 4, lambda d: f"{struct.unpack('<I', d)[0]} records")
-        
-        # Claim each 4-byte record
-        expected_records = min(record_count, (len(self.data) - 224) // 4)
-        
-        for i in range(expected_records):
-            offset = 224 + (i * 4)
-            record_val = struct.unpack_from('<I', self.data, offset)[0]
-            val_low = record_val & 0xFFFF
-            val_high = (record_val >> 16) & 0xFFFF
-            
-            self.curator.seek(offset)
-            self.curator.claim(
-                f"Prop[{i}]",
-                4,
-                lambda d, v=record_val, l=val_low, h=val_high: 
-                    f"0x{v:08x} (L:0x{l:04x} H:0x{h:04x})"
-            )
-            
-            # Store the parsed record for potential external use
-            self.records.append({
-                "index": i,
-                "offset": offset,
-                "full_value": record_val,
-                "low_word": val_low,
-                "high_word": val_high
-            })
-        
+        # The entire table is being left as unclaimed. The curator by default
+        # will report the whole data block as a single UnclaimedRegion.
         return self.curator.get_regions()
