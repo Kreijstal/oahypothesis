@@ -229,7 +229,7 @@ def main():
         print()
         print("NOTES:")
         print("- The formula index = (value - 1) // 2 + 64 is working correctly")
-        print("- Parser successfully claims known fields at offsets 0x2b5, 0x2c1, 0x2e8")
+        print("- Parser successfully claims known fields at offsets 0x2b9, 0x2c1, 0x2e8")
         print("- Changes.txt documents sch15-18 transitions which are in repository")
         print("- Formula validated against sch14-18.oa files")
         return 0
