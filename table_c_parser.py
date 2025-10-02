@@ -33,47 +33,77 @@ class SeparatorRecord:
 
 @dataclass
 class TableHeader:
+    """
+    Table 0xc header structure (716 bytes).
+    
+    The header is a struct with 89 uint64 fields (4 + 89*8 = 716 bytes):
+    - Fields 0-33: Location-dependent offsets (shift when data is inserted)
+    - Fields 34+: Static configuration values
+    
+    Some fields have been identified:
+    - Field [0]: first_record_offset (always 0x2cc in observed files)
+    - Fields [31-33]: Record boundary offsets (shift with data changes)
+    """
     header_id: int
     pointer_list_end_offset: int
-    offsets: List[int]  # Indices 0-33 (approx.): True 64-bit pointers/offsets
-    config_values: List[int]  # Indices 34+: Static configuration values
+    
+    # Known named fields
+    first_record_offset: int  # Field [0], always 0x2cc
+    
+    # Unknown fields (stored as lists for now)
+    unknown_offsets_1_30: List[int]  # Fields [1-30]
+    boundary_offsets_31_33: List[int]  # Fields [31-33], verified to be offsets
+    
+    config_values: List[int]  # Fields 34+: Static configuration values
+    
+    # For binary curator completeness, store all raw values
+    raw_all_fields: List[int]
+    
+    @property
+    def offsets(self) -> List[int]:
+        """Get all offset fields (0-33) for backward compatibility."""
+        result = [self.first_record_offset]
+        result.extend(self.unknown_offsets_1_30)
+        result.extend(self.boundary_offsets_31_33)
+        return result
     
     def __str__(self):
         """
         Print ALL header data - following binary_curator principle.
         Every claimed byte must be printed or asserted.
-        Repeated zeros are summarized losslessly.
-        Now separates offsets from config values for clarity.
+        Now treats header as a struct with named and unknown fields.
         """
-        lines = [f"Header ID: {format_int(self.header_id)}"]
-        lines.append(f"Total Pointers/Values: {len(self.offsets) + len(self.config_values)}")
+        lines = [
+            f"Header ID: {format_int(self.header_id)}",
+            f"Header Size: {self.pointer_list_end_offset} bytes",
+            f"Total Fields: {len(self.raw_all_fields)}",
+            "",
+            "=== KNOWN FIELDS ===",
+            f"  [Field 0] first_record_offset: 0x{self.first_record_offset:04x}",
+        ]
         
-        # Section 1: Offsets (location-dependent pointers)
-        if self.offsets:
-            lines.append("  Offsets (location-dependent):")
-            i = 0
-            while i < len(self.offsets):
-                ptr = self.offsets[i]
-                # Check for repeated values
-                if ptr == 0 and i + 1 < len(self.offsets):
-                    # Count consecutive zeros
-                    count = 1
-                    j = i + 1
-                    while j < len(self.offsets) and self.offsets[j] == 0:
-                        count += 1
-                        j += 1
-                    if count >= 4:  # Only summarize if 4+ consecutive zeros
-                        lines.append(f"    [{i:03d}-{j-1:03d}]: 0x{ptr:016x} (repeats {count} times)")
-                        i = j
-                        continue
-                lines.append(f"    [{i:03d}]: 0x{ptr:016x}")
-                i += 1
+        # Boundary offsets (31-33) - known to be true offsets
+        if self.boundary_offsets_31_33:
+            lines.append("")
+            lines.append("  [Fields 31-33] boundary_offsets (verified record boundaries):")
+            for i, offset in enumerate(self.boundary_offsets_31_33, start=31):
+                lines.append(f"    [{i:03d}]: 0x{offset:04x}")
         
-        # Section 2: Config values (static configuration)
+        # Unknown offset fields (1-30)
+        if self.unknown_offsets_1_30:
+            lines.append("")
+            lines.append("  [Fields 1-30] unknown_offsets (purpose unclear):")
+            for i, val in enumerate(self.unknown_offsets_1_30, start=1):
+                # Only show non-zero values to reduce clutter
+                if val != 0:
+                    lines.append(f"    [{i:03d}]: 0x{val:x}")
+        
+        # Config values (34+)
         if self.config_values:
-            lines.append("  Config Values (static):")
+            lines.append("")
+            lines.append("=== CONFIG VALUES (Fields 34+) ===")
             i = 0
-            offset_base = len(self.offsets)
+            offset_base = 34
             while i < len(self.config_values):
                 val = self.config_values[i]
                 # Check for repeated values
@@ -85,10 +115,12 @@ class TableHeader:
                         count += 1
                         j += 1
                     if count >= 4:  # Only summarize if 4+ consecutive zeros
-                        lines.append(f"    [{offset_base+i:03d}-{offset_base+j-1:03d}]: 0x{val:016x} (repeats {count} times)")
+                        lines.append(f"  [{offset_base+i:03d}-{offset_base+j-1:03d}]: 0x{val:016x} (repeats {count} times)")
                         i = j
                         continue
-                lines.append(f"    [{offset_base+i:03d}]: 0x{val:016x}")
+                # Show non-zero values
+                if val != 0:
+                    lines.append(f"  [{offset_base+i:03d}]: 0x{val:x}")
                 i += 1
         
         return "\n".join(lines)
@@ -343,7 +375,7 @@ class HypothesisParser:
         return self.curator.get_regions()
 
     def _parse_header_with_curator(self) -> int:
-        """Parse header using BinaryCurator"""
+        """Parse header using BinaryCurator, treating it as a struct with named fields."""
         if len(self.data) < 16:
             return 0
 
@@ -353,19 +385,37 @@ class HypothesisParser:
         if end_offset > len(self.data) or end_offset < 8:
             return 0
 
-        pointers = [struct.unpack_from('<Q', self.data, i)[0] for i in range(8, end_offset, 8)]
-
-        # Split pointers into offsets (0-33) and config values (34+)
-        # Based on analysis, the boundary is approximately at index 34
-        boundary = 34
-        offsets = pointers[:boundary] if len(pointers) >= boundary else pointers
-        config_values = pointers[boundary:] if len(pointers) > boundary else []
+        # Read all pointer/value fields
+        all_fields = [struct.unpack_from('<Q', self.data, i)[0] for i in range(8, end_offset, 8)]
+        
+        # Parse as struct with named fields
+        # Field [0]: first_record_offset (always 0x2cc)
+        first_record_offset = all_fields[0] if len(all_fields) > 0 else 0
+        
+        # Fields [1-30]: Unknown offsets
+        unknown_offsets_1_30 = all_fields[1:31] if len(all_fields) > 31 else (all_fields[1:] if len(all_fields) > 1 else [])
+        
+        # Fields [31-33]: Boundary offsets (verified to be true offsets)
+        boundary_offsets_31_33 = all_fields[31:34] if len(all_fields) > 33 else (all_fields[31:] if len(all_fields) > 31 else [])
+        
+        # Fields [34+]: Config values
+        config_values = all_fields[34:] if len(all_fields) > 34 else []
 
         self.curator.claim(
             "Table Header",
             end_offset,
-            lambda d: TableHeader(header_id, end_offset, offsets, config_values)
+            lambda d: TableHeader(
+                header_id=header_id,
+                pointer_list_end_offset=end_offset,
+                first_record_offset=first_record_offset,
+                unknown_offsets_1_30=unknown_offsets_1_30,
+                boundary_offsets_31_33=boundary_offsets_31_33,
+                config_values=config_values,
+                raw_all_fields=all_fields
+            )
         )
+
+        return end_offset
 
         return end_offset
     
