@@ -83,6 +83,38 @@ class UnclaimedRegion(Region):
     """Stores information about a block of data that has not been identified."""
     pass
 
+# --- Data Structure for Nested Unclaimed Data ---
+@dataclass
+class NestedUnclaimedData:
+    """
+    Represents unclaimed data within a claimed structure.
+    This allows for partial understanding of complex records.
+    """
+    label: str  # e.g., "Unclaimed Payload", "Unknown Field @ 0x8"
+    data: bytes
+    description: Optional[str] = None  # Additional context
+    
+    def __str__(self):
+        """Format nested unclaimed data with clear labeling."""
+        lines = [f"[{self.label}] Size: {len(self.data)} bytes"]
+        if self.description:
+            lines.append(f"  Description: {self.description}")
+        
+        # Hex dump of the data (limited to first 256 bytes)
+        if len(self.data) > 0:
+            lines.append("  Hex dump:")
+            display_size = min(len(self.data), 256)
+            for i in range(0, display_size, 16):
+                chunk = self.data[i:i+16]
+                hex_part = ' '.join(f'{b:02x}' for b in chunk)
+                ascii_part = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in chunk)
+                lines.append(f"    {i:04x}: {hex_part:<48} |{ascii_part}|")
+            
+            if len(self.data) > 256:
+                lines.append(f"    ... ({len(self.data) - 256} more bytes)")
+        
+        return "\n".join(lines)
+
 # --- Data Structure for a Claimed Region ---
 @dataclass
 class ClaimedRegion(Region):

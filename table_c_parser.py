@@ -3,7 +3,7 @@ import struct
 import datetime
 from dataclasses import dataclass
 from typing import List, Optional
-from oaparser.binary_curator import BinaryCurator, Region
+from oaparser.binary_curator import BinaryCurator, Region, NestedUnclaimedData
 
 # --- Utility Functions ---
 def format_int(value): return f"{value} (0x{value:x})"
@@ -33,33 +33,96 @@ class SeparatorRecord:
 
 @dataclass
 class TableHeader:
-    header_id: int; pointer_list_end_offset: int; internal_pointers: List[int]
+    """
+    Table 0xc header structure (716 bytes).
+    
+    The header is a struct with 89 uint64 fields (4 + 89*8 = 716 bytes):
+    - Fields 0-33: Location-dependent offsets (shift when data is inserted)
+    - Fields 34+: Static configuration values
+    
+    Some fields have been identified:
+    - Field [0]: first_record_offset (always 0x2cc in observed files)
+    - Fields [31-33]: Record boundary offsets (shift with data changes)
+    """
+    header_id: int
+    pointer_list_end_offset: int
+    
+    # Known named fields
+    first_record_offset: int  # Field [0], always 0x2cc
+    
+    # Unknown fields (stored as lists for now)
+    unknown_offsets_1_30: List[int]  # Fields [1-30]
+    boundary_offsets_31_33: List[int]  # Fields [31-33], verified to be offsets
+    
+    config_values: List[int]  # Fields 34+: Static configuration values
+    
+    # For binary curator completeness, store all raw values
+    raw_all_fields: List[int]
+    
+    @property
+    def offsets(self) -> List[int]:
+        """Get all offset fields (0-33) for backward compatibility."""
+        result = [self.first_record_offset]
+        result.extend(self.unknown_offsets_1_30)
+        result.extend(self.boundary_offsets_31_33)
+        return result
+    
     def __str__(self):
         """
         Print ALL header data - following binary_curator principle.
         Every claimed byte must be printed or asserted.
-        Repeated zeros are summarized losslessly.
+        Now treats header as a struct with named and unknown fields.
         """
-        lines = [f"Header ID: {format_int(self.header_id)}, Pointers: {len(self.internal_pointers)}"]
-        if self.internal_pointers:
-            lines.append("  Internal Pointers:")
+        lines = [
+            f"Header ID: {format_int(self.header_id)}",
+            f"Header Size: {self.pointer_list_end_offset} bytes",
+            f"Total Fields: {len(self.raw_all_fields)}",
+            "",
+            "=== KNOWN FIELDS ===",
+            f"  [Field 0] first_record_offset: 0x{self.first_record_offset:04x}",
+        ]
+        
+        # Boundary offsets (31-33) - known to be true offsets
+        if self.boundary_offsets_31_33:
+            lines.append("")
+            lines.append("  [Fields 31-33] boundary_offsets (verified record boundaries):")
+            for i, offset in enumerate(self.boundary_offsets_31_33, start=31):
+                lines.append(f"    [{i:03d}]: 0x{offset:04x}")
+        
+        # Unknown offset fields (1-30)
+        if self.unknown_offsets_1_30:
+            lines.append("")
+            lines.append("  [Fields 1-30] unknown_offsets (purpose unclear):")
+            for i, val in enumerate(self.unknown_offsets_1_30, start=1):
+                # Only show non-zero values to reduce clutter
+                if val != 0:
+                    lines.append(f"    [{i:03d}]: 0x{val:x}")
+        
+        # Config values (34+)
+        if self.config_values:
+            lines.append("")
+            lines.append("=== CONFIG VALUES (Fields 34+) ===")
             i = 0
-            while i < len(self.internal_pointers):
-                ptr = self.internal_pointers[i]
+            offset_base = 34
+            while i < len(self.config_values):
+                val = self.config_values[i]
                 # Check for repeated values
-                if ptr == 0 and i + 1 < len(self.internal_pointers):
+                if val == 0 and i + 1 < len(self.config_values):
                     # Count consecutive zeros
                     count = 1
                     j = i + 1
-                    while j < len(self.internal_pointers) and self.internal_pointers[j] == 0:
+                    while j < len(self.config_values) and self.config_values[j] == 0:
                         count += 1
                         j += 1
                     if count >= 4:  # Only summarize if 4+ consecutive zeros
-                        lines.append(f"    [{i:03d}-{j-1:03d}]: 0x{ptr:016x} (repeats {count} times)")
+                        lines.append(f"  [{offset_base+i:03d}-{offset_base+j-1:03d}]: 0x{val:016x} (repeats {count} times)")
                         i = j
                         continue
-                lines.append(f"    [{i:03d}]: 0x{ptr:016x}")
+                # Show non-zero values
+                if val != 0:
+                    lines.append(f"  [{offset_base+i:03d}]: 0x{val:x}")
                 i += 1
+        
         return "\n".join(lines)
 
 @dataclass
@@ -140,13 +203,40 @@ class PropertyValueRecord:
     data: bytes
     property_value_id: int
     string_references: List[tuple]  # [(offset_in_record, string_table_offset, resolved_string)]
+    # Known fields (first bytes of the record)
+    record_type: Optional[int] = None  # First 4 bytes
+    marker: Optional[int] = None  # Second 4 bytes
+    # Unclaimed payload - the remainder after known fields
+    unclaimed_payload: Optional[NestedUnclaimedData] = None
 
     def __str__(self):
+        """
+        Display PropertyValue with nested curation.
+        Shows claimed fields first, then explicitly declares unclaimed payload.
+        """
+        lines = []
+        
+        # Header with property value ID
         parts = [f"PropertyValue ID:{format_int(self.property_value_id)}"]
+        
+        # Show known fields if available
+        if self.record_type is not None:
+            parts.append(f"Type:{format_int(self.record_type)}")
+        if self.marker is not None:
+            parts.append(f"Marker:{format_int(self.marker)}")
+        
         if self.string_references:
             strs = [f'"{r[2]}"' for r in self.string_references[:2]]
             parts.append(f"Strings:{','.join(strs)}")
-        return " ".join(parts)
+        
+        lines.append(" ".join(parts))
+        
+        # Show unclaimed payload if present
+        if self.unclaimed_payload:
+            lines.append("")  # Blank line for readability
+            lines.append(str(self.unclaimed_payload))
+        
+        return "\n".join(lines)
 
 @dataclass
 class GenericRecord:
@@ -235,7 +325,380 @@ class HypothesisParser:
         # PASS 1: Parse header
         try:
             header_end = self._parse_header_with_curator()
+            
+            # Get the parsed header to access offsets
+            header_region = self.curator.regions[0] if self.curator.regions else None
+            if not header_region or not isinstance(header_region.parsed_value, TableHeader):
+                # Fallback to legacy parsing if header parsing failed
+                return self._parse_legacy_fallback(header_end)
+            
+            header = header_region.parsed_value
+            
+            # PASS 2: Determine timestamp location using FIXED OFFSET from END
+            # *** CRITICAL DISCOVERY ***
+            # The timestamp separator is ALWAYS at exactly 20 bytes from the END of table 0xc
+            # This holds true for ALL observed .oa files (sch_old.oa through sch18.oa)
+            # 
+            # Table structure:
+            #   [Header: 716 bytes]
+            #   [Variable data]
+            #   [Timestamp separator: 16 bytes at offset (table_size - 20)]
+            #   [Final data: 4 bytes]
+            #
+            # This eliminates the need to scan for separators to find the timestamp!
+            timestamp_offset = None
+            timestamp_val = None
+            
+            TIMESTAMP_OFFSET_FROM_END = 20
+            if len(self.data) >= TIMESTAMP_OFFSET_FROM_END + 16:
+                candidate_timestamp_offset = len(self.data) - TIMESTAMP_OFFSET_FROM_END
+                # Verify it's actually a separator with a valid timestamp
+                sep_info = self._check_separator(candidate_timestamp_offset)
+                if sep_info:
+                    pos, val = sep_info
+                    ts_32bit = val & 0xFFFFFFFF
+                    if ts_32bit > 946684800:
+                        try:
+                            datetime.datetime.utcfromtimestamp(ts_32bit)
+                            timestamp_offset = pos
+                            timestamp_val = val
+                        except (ValueError, OSError):
+                            pass
+            
+            # PASS 3: Use POINTER-DRIVEN parsing with header offsets
+            # This significantly reduces diff noise by using stable boundaries
+            return self._parse_pointer_driven(header, header_end, timestamp_offset, timestamp_val)
 
+        except Exception:
+            pass
+
+        return self.curator.get_regions()
+
+    def _parse_header_with_curator(self) -> int:
+        """Parse header using BinaryCurator, treating it as a struct with named fields."""
+        if len(self.data) < 16:
+            return 0
+
+        header_id = struct.unpack_from('<I', self.data, 0)[0]
+        end_offset = struct.unpack_from('<I', self.data, 8)[0]
+
+        if end_offset > len(self.data) or end_offset < 8:
+            return 0
+
+        # Read all pointer/value fields
+        all_fields = [struct.unpack_from('<Q', self.data, i)[0] for i in range(8, end_offset, 8)]
+        
+        # Parse as struct with named fields
+        # Field [0]: first_record_offset (always 0x2cc)
+        first_record_offset = all_fields[0] if len(all_fields) > 0 else 0
+        
+        # Fields [1-30]: Unknown offsets
+        unknown_offsets_1_30 = all_fields[1:31] if len(all_fields) > 31 else (all_fields[1:] if len(all_fields) > 1 else [])
+        
+        # Fields [31-33]: Boundary offsets (verified to be true offsets)
+        boundary_offsets_31_33 = all_fields[31:34] if len(all_fields) > 33 else (all_fields[31:] if len(all_fields) > 31 else [])
+        
+        # Fields [34+]: Config values
+        config_values = all_fields[34:] if len(all_fields) > 34 else []
+
+        self.curator.claim(
+            "Table Header",
+            end_offset,
+            lambda d: TableHeader(
+                header_id=header_id,
+                pointer_list_end_offset=end_offset,
+                first_record_offset=first_record_offset,
+                unknown_offsets_1_30=unknown_offsets_1_30,
+                boundary_offsets_31_33=boundary_offsets_31_33,
+                config_values=config_values,
+                raw_all_fields=all_fields
+            )
+        )
+
+        return end_offset
+
+        return end_offset
+    
+    def _parse_pointer_driven(self, header: TableHeader, header_end: int, timestamp_offset: Optional[int], timestamp_val: Optional[int]) -> List[Region]:
+        """
+        Pointer-driven parsing using header offsets to define record boundaries.
+        This reduces diff noise by using stable boundaries from the header.
+        """
+        # Extract valid offsets from header (only those that point into data region)
+        candidate_offsets = []
+        for offset in header.offsets:
+            # Only include offsets that point into the data region after header
+            if header_end <= offset < len(self.data):
+                candidate_offsets.append(offset)
+        
+        # Remove duplicates and sort
+        candidate_offsets = sorted(set(candidate_offsets))
+        
+        if not candidate_offsets:
+            # No valid offsets, fall back to legacy parsing
+            return self._parse_legacy_fallback(header_end, timestamp_offset, timestamp_val)
+        
+        # Filter offsets to keep only those that are well-separated
+        # This prevents creating tiny records that break PropertyValue detection
+        MIN_RECORD_SIZE = 32  # Minimum size for PropertyValue detection
+        valid_offsets = [candidate_offsets[0]]  # Always keep first offset
+        
+        for offset in candidate_offsets[1:]:
+            if offset - valid_offsets[-1] >= MIN_RECORD_SIZE:
+                valid_offsets.append(offset)
+        
+        # Parse records using pointer boundaries
+        for i in range(len(valid_offsets)):
+            start_offset = valid_offsets[i]
+            
+            # Determine end of this record
+            if i + 1 < len(valid_offsets):
+                end_offset = valid_offsets[i + 1]
+            else:
+                # Last record: check if timestamp is after this offset
+                if timestamp_offset and timestamp_offset > start_offset:
+                    end_offset = timestamp_offset
+                else:
+                    end_offset = len(self.data)
+            
+            record_size = end_offset - start_offset
+            if record_size <= 0:
+                continue
+            
+            # Dispatch and claim this record
+            self._dispatch_and_claim_pointer_record(start_offset, record_size, timestamp_offset, timestamp_val)
+        
+        # Claim timestamp if it exists and hasn't been claimed yet
+        if timestamp_offset:
+            # Find where timestamp should be claimed
+            last_claimed_offset = valid_offsets[-1] if valid_offsets else header_end
+            
+            # Find the last valid offset before timestamp
+            last_before_ts = header_end
+            for off in valid_offsets:
+                if off < timestamp_offset:
+                    last_before_ts = off
+                else:
+                    break
+            
+            # Check if there's a gap between last offset and timestamp
+            # This can happen if timestamp is not pointed to by header
+            if timestamp_offset > last_before_ts:
+                # The timestamp block should extend from the last pointer to the timestamp
+                # But we may have already claimed it in the loop above
+                # Let's check if we need to claim the timestamp specifically
+                
+                # Just claim the timestamp directly
+                self.curator.seek(timestamp_offset)
+                self.curator.claim(
+                    "Timestamp",
+                    16,
+                    lambda d, v=timestamp_val: TimestampRecord(timestamp_offset, v)
+                )
+                
+                # Claim any remaining data after timestamp
+                remaining_start = timestamp_offset + 16
+                if remaining_start < len(self.data):
+                    remaining_size = len(self.data) - remaining_start
+                    if remaining_size > 0:
+                        self._claim_generic_or_property(remaining_start, remaining_size)
+        
+        return self.curator.get_regions()
+    
+    def _dispatch_and_claim_pointer_record(self, offset: int, size: int, timestamp_offset: Optional[int], timestamp_val: Optional[int]):
+        """
+        Dispatch and claim a record defined by header pointer boundaries.
+        NOTE: Timestamp is handled separately, not in this method.
+        """
+        if size <= 0:
+            return
+        
+        # No timestamp handling here - it's done in _parse_pointer_driven
+        self._claim_record_segment(offset, size)
+    
+    def _claim_record_segment(self, offset: int, size: int):
+        """Claim a record segment, checking for known patterns."""
+        if size <= 0:
+            return
+        
+        self.curator.seek(offset)
+        
+        # Check for separator
+        if size >= 16:
+            sep_info = self._check_separator(offset)
+            if sep_info:
+                cursor_pos, value_64 = sep_info
+                self.curator.claim(
+                    "Separator",
+                    16,
+                    lambda d, p=cursor_pos, v=value_64: SeparatorRecord(p, v)
+                )
+                # Claim remaining if any
+                if size > 16:
+                    self._claim_record_segment(offset + 16, size - 16)
+                return
+        
+        # Check for NetUpdate
+        if size >= 12:
+            record_data = self.data[offset:offset + size]
+            t = struct.unpack_from('<I', record_data, 0)[0]
+            if t == 19 and len(record_data) >= 12:
+                s1, s2 = struct.unpack_from('<II', record_data, 4)
+                if s1 == s2 and s1 > 0:
+                    payload_size = s1
+                    full_size = 12 + payload_size
+                    rem = full_size % 4
+                    aligned_size = full_size + (4 - rem if rem != 0 else 0)
+                    
+                    if aligned_size <= size:
+                        # Claim as NetUpdate
+                        net_size = self._try_claim_net_update(offset)
+                        if net_size > 0:
+                            # Claim remaining if any
+                            if size > net_size:
+                                self._claim_record_segment(offset + net_size, size - net_size)
+                            return
+        
+        # Check for padding
+        if size >= 16:
+            pad_size = self._try_claim_padding(offset)
+            if pad_size > 0 and pad_size <= size:
+                # Claim remaining if any
+                if size > pad_size:
+                    self._claim_record_segment(offset + pad_size, size - pad_size)
+                return
+        
+        # Default: claim as property value or generic
+        self._claim_generic_or_property(offset, size)
+
+    def _dispatch_and_claim_record(self, offset: int, size: int, timestamp_offset: Optional[int], timestamp_val: Optional[int]):
+        """
+        Dispatch and claim a record based on its content.
+        This method identifies the record type and claims it appropriately.
+        Handles timestamp separators within larger blocks.
+        """
+        if size <= 0:
+            return
+        
+        # Check if the timestamp is within this block
+        if timestamp_offset is not None and offset <= timestamp_offset < offset + size:
+            # Split the block at the timestamp
+            before_size = timestamp_offset - offset
+            after_size = offset + size - (timestamp_offset + 16)
+            
+            # Claim data before timestamp
+            if before_size > 0:
+                self._dispatch_simple_record(offset, before_size)
+            
+            # Claim timestamp
+            self.curator.seek(timestamp_offset)
+            self.curator.claim(
+                "Timestamp",
+                16,
+                lambda d, v=timestamp_val: TimestampRecord(timestamp_offset, v)
+            )
+            
+            # Claim data after timestamp
+            if after_size > 0:
+                self._dispatch_simple_record(timestamp_offset + 16, after_size)
+            
+            return
+        
+        # No timestamp in this block, use simple dispatch
+        self._dispatch_simple_record(offset, size)
+    
+    def _dispatch_simple_record(self, offset: int, size: int):
+        """Dispatch and claim a single record without timestamp handling."""
+        if size <= 0:
+            return
+        
+        record_data = self.data[offset:offset + size]
+        
+        self.curator.seek(offset)
+        
+        # Check if this is a separator (but not timestamp, already handled)
+        if size >= 16:
+            sep_info = self._check_separator(offset)
+            if sep_info:
+                cursor_pos, value_64 = sep_info
+                self.curator.claim(
+                    "Separator",
+                    16,
+                    lambda d, p=cursor_pos, v=value_64: SeparatorRecord(p, v)
+                )
+                # Claim remaining data in this block if any
+                if size > 16:
+                    remaining_size = size - 16
+                    self.curator.seek(offset + 16)
+                    self._claim_generic_or_property(offset + 16, remaining_size)
+                return
+        
+        # Check if this is a NetUpdate record
+        if size >= 12:
+            net_size = self._try_claim_net_update(offset)
+            if net_size > 0 and net_size <= size:
+                # Claim remaining data if any
+                if size > net_size:
+                    remaining_size = size - net_size
+                    self.curator.seek(offset + net_size)
+                    self._claim_generic_or_property(offset + net_size, remaining_size)
+                return
+        
+        # Check if this is padding
+        if size >= 16:
+            pad_size = self._try_claim_padding(offset)
+            if pad_size > 0 and pad_size <= size:
+                # Claim remaining data if any
+                if size > pad_size:
+                    remaining_size = size - pad_size
+                    self.curator.seek(offset + pad_size)
+                    self._claim_generic_or_property(offset + pad_size, remaining_size)
+                return
+        
+        # Default: claim as property value or generic record
+        self._claim_generic_or_property(offset, size)
+    
+    def _claim_generic_or_property(self, offset: int, size: int):
+        """Claim a block as either a PropertyValue or Generic record."""
+        if size <= 0:
+            return
+            
+        record_data = self.data[offset:offset + size]
+        property_value_info = self._check_property_value(record_data)
+        
+        self.curator.seek(offset)
+        string_refs = self._find_string_refs_in_data(record_data)
+        
+        if property_value_info is not None:
+            # It's a known property value
+            self.curator.claim(
+                "PropertyValue",
+                size,
+                lambda d, p=offset, s=size, rd=record_data, info=property_value_info, sr=string_refs:
+                    PropertyValueRecord(
+                        offset=p,
+                        size=s,
+                        data=rd,
+                        property_value_id=info['property_value_id'],
+                        string_references=sr,
+                        record_type=info['record_type'],
+                        marker=info['marker'],
+                        unclaimed_payload=info['unclaimed_payload']
+                    )
+            )
+        else:
+            # Fallback to a GenericRecord
+            self.curator.claim(
+                "Generic",
+                size,
+                lambda d, p=offset, s=size, rd=record_data, sr=string_refs:
+                    GenericRecord(p, s, rd, sr)
+            )
+    
+    def _parse_legacy_fallback(self, header_end: int, timestamp_offset: Optional[int] = None, timestamp_val: Optional[int] = None) -> List[Region]:
+        """Legacy parsing method as fallback."""
+        # If timestamp wasn't provided, try to find it by scanning
+        if timestamp_offset is None:
             # PASS 2: Find all separators first to identify timestamp
             separator_positions = []
             cursor = header_end
@@ -279,98 +742,77 @@ class HypothesisParser:
 
             # Find the last valid timestamp
             timestamp_pos = None
-            timestamp_val = None
+            timestamp_value = None
             for pos, val in reversed(separator_positions):
                 ts_32bit = val & 0xFFFFFFFF
                 if ts_32bit > 946684800:
                     try:
                         datetime.datetime.utcfromtimestamp(ts_32bit)
                         timestamp_pos = pos
-                        timestamp_val = val
+                        timestamp_value = val
                         break
                     except (ValueError, OSError):
                         continue
+            
+            timestamp_offset = timestamp_pos
+            timestamp_val = timestamp_value
 
-            # PASS 3: Claim all structures with timestamp marked
-            cursor = header_end
-            while cursor < len(self.data):
-                initial_cursor = cursor
+        # PASS 3: Claim all structures with timestamp marked
+        cursor = header_end
+        while cursor < len(self.data):
+            initial_cursor = cursor
 
-                # Try separator
-                sep_info = self._check_separator(cursor)
-                if sep_info:
-                    cursor_pos, value_64 = sep_info
-                    self.curator.seek(cursor)
-                    if cursor == timestamp_pos:
-                        self.curator.claim(
-                            "Timestamp",
-                            16,
-                            lambda d, v=timestamp_val: TimestampRecord(cursor, v)
-                        )
-                    else:
-                        self.curator.claim(
-                            "Separator",
-                            16,
-                            lambda d, p=cursor_pos, v=value_64: SeparatorRecord(p, v)
-                        )
-                    cursor += 16
-                    continue
+            # Try separator
+            sep_info = self._check_separator(cursor)
+            if sep_info:
+                cursor_pos, value_64 = sep_info
+                self.curator.seek(cursor)
+                if cursor == timestamp_offset:
+                    self.curator.claim(
+                        "Timestamp",
+                        16,
+                        lambda d, v=timestamp_val: TimestampRecord(cursor, v)
+                    )
+                else:
+                    self.curator.claim(
+                        "Separator",
+                        16,
+                        lambda d, p=cursor_pos, v=value_64: SeparatorRecord(p, v)
+                    )
+                cursor += 16
+                continue
 
-                net_size = self._try_claim_net_update(cursor)
-                if net_size > 0:
-                    cursor += net_size
-                    continue
+            net_size = self._try_claim_net_update(cursor)
+            if net_size > 0:
+                cursor += net_size
+                continue
 
-                pad_size = self._try_claim_padding(cursor)
-                if pad_size > 0:
-                    cursor += pad_size
-                    continue
+            pad_size = self._try_claim_padding(cursor)
+            if pad_size > 0:
+                cursor += pad_size
+                continue
 
-                # Try to identify and claim property values or generic records
-                # If we can't identify it as a property value, claim as generic
-                claimed_size = self._try_claim_property_or_generic(cursor)
-                if claimed_size > 0:
-                    cursor += claimed_size
-                    continue
+            # Try to identify and claim property values or generic records
+            # If we can't identify it as a property value, claim as generic
+            claimed_size = self._try_claim_property_or_generic(cursor)
+            if claimed_size > 0:
+                cursor += claimed_size
+                continue
 
-                # Fallback to prevent infinite loops for completely unrecognized data
-                if cursor == initial_cursor:
-                    # This case should ideally not be hit if generic records handle all leftovers
-                    unclaimed_size = self._find_next_record_start(cursor + 4) - cursor
-                    if unclaimed_size <= 0:
-                        unclaimed_size = 4  # Default skip
+            # Fallback to prevent infinite loops for completely unrecognized data
+            if cursor == initial_cursor:
+                # This case should ideally not be hit if generic records handle all leftovers
+                unclaimed_size = self._find_next_record_start(cursor + 4) - cursor
+                if unclaimed_size <= 0:
+                    unclaimed_size = 4  # Default skip
 
-                    # We can either leave it unclaimed or create a "Raw" record
-                    # For now, just advance past it to avoid getting stuck
-                    cursor += unclaimed_size
-                    if cursor >= len(self.data):
-                        break
-
-        except Exception:
-            pass
-
+                # We can either leave it unclaimed or create a "Raw" record
+                # For now, just advance past it to avoid getting stuck
+                cursor += unclaimed_size
+                if cursor >= len(self.data):
+                    break
+        
         return self.curator.get_regions()
-
-    def _parse_header_with_curator(self) -> int:
-        """Parse header using BinaryCurator"""
-        if len(self.data) < 16:
-            return 0
-
-        header_id = struct.unpack_from('<I', self.data, 0)[0]
-        end_offset = struct.unpack_from('<I', self.data, 8)[0]
-
-        if end_offset > len(self.data) or end_offset < 8:
-            return 0
-
-        pointers = [struct.unpack_from('<Q', self.data, i)[0] for i in range(8, end_offset, 8)]
-
-        self.curator.claim(
-            "Table Header",
-            end_offset,
-            lambda d: TableHeader(header_id, end_offset, pointers)
-        )
-
-        return end_offset
 
     def _check_separator(self, cursor):
         """Check if there's a separator at this position, return (cursor, value) or None"""
@@ -485,18 +927,27 @@ class HypothesisParser:
         record_data = self.data[cursor:end]
 
         # First, attempt to identify it as a PropertyValueRecord
-        property_value_id = self._check_property_value(record_data)
+        property_value_info = self._check_property_value(record_data)
 
         self.curator.seek(cursor)
         string_refs = self._find_string_refs_in_data(record_data)
 
-        if property_value_id is not None:
+        if property_value_info is not None:
             # It's a known property value
             self.curator.claim(
                 "PropertyValue",
                 size,
-                lambda d, p=cursor, s=size, rd=record_data, pid=property_value_id, sr=string_refs:
-                    PropertyValueRecord(p, s, rd, pid, sr)
+                lambda d, p=cursor, s=size, rd=record_data, info=property_value_info, sr=string_refs:
+                    PropertyValueRecord(
+                        offset=p,
+                        size=s,
+                        data=rd,
+                        property_value_id=info['property_value_id'],
+                        string_references=sr,
+                        record_type=info['record_type'],
+                        marker=info['marker'],
+                        unclaimed_payload=info['unclaimed_payload']
+                    )
             )
         else:
             # Fallback to a GenericRecord
@@ -509,10 +960,11 @@ class HypothesisParser:
 
         return size
 
-    def _check_property_value(self, data: bytes) -> Optional[int]:
+    def _check_property_value(self, data: bytes) -> Optional[dict]:
         """
         Checks for a very specific Property Value record pattern.
         This record must start with 19, have a marker at index 1, and be of a certain size.
+        Returns a dict with parsed info if it matches, None otherwise.
         """
         num_ints = len(data) // 4
         if num_ints < 8:
@@ -525,7 +977,21 @@ class HypothesisParser:
         if record_type == 19 and marker == 0xc8000000:
             val_at_index_7 = struct.unpack_from('<I', data, 7 * 4)[0]
             if 20 < val_at_index_7 < 200:
-                return val_at_index_7
+                # We understand the first 32 bytes (8 integers)
+                # The rest is unclaimed payload
+                known_size = 32
+                unclaimed_bytes = data[known_size:] if len(data) > known_size else b''
+                
+                return {
+                    'property_value_id': val_at_index_7,
+                    'record_type': record_type,
+                    'marker': marker,
+                    'unclaimed_payload': NestedUnclaimedData(
+                        label="UNCLAIMED PAYLOAD",
+                        data=unclaimed_bytes,
+                        description=f"Unknown data within PropertyValueRecord (after first 32 bytes)"
+                    ) if unclaimed_bytes else None
+                }
 
         return None
 

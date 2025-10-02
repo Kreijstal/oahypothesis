@@ -50,13 +50,16 @@ def extract_timestamp_from_table_c(data):
         return None
     
     parser = HypothesisParser(data)
-    parser.parse()
+    regions = parser.parse()
     
-    # Find TimestampRecord in parsed records
+    # Find TimestampRecord in parsed regions
     from table_c_parser import TimestampRecord
-    for record in parser.records:
-        if isinstance(record, TimestampRecord):
-            return record.timestamp_val & 0xFFFFFFFF
+    from oaparser.binary_curator import ClaimedRegion
+    
+    for region in regions:
+        if isinstance(region, ClaimedRegion):
+            if isinstance(region.parsed_value, TimestampRecord):
+                return region.parsed_value.timestamp_val & 0xFFFFFFFF
     
     return None
 
