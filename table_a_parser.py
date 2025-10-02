@@ -43,8 +43,17 @@ class TableAParser:
         
         self.curator.claim("Header", 16, parse_header)
         
-        # Claim the 4-byte extra padding
-        self.curator.claim("Padding", 4, lambda d: f"0x{struct.unpack('<I', d)[0]:08x}")
+        # Claim the 4-byte extra padding and validate it's all zeros
+        def parse_padding(data):
+            value = struct.unpack('<I', data)[0]
+            if value != 0:
+                return f"0x{value:08x} [WARNING: Expected 0x00000000]"
+            # Verify all bytes are zero
+            if data != b'\x00\x00\x00\x00':
+                return f"[WARNING: Non-zero padding bytes: {data.hex()}]"
+            return "0x00000000"
+        
+        self.curator.claim("Padding", 4, parse_padding)
         
         # Extract all null-terminated strings from remaining data
         string_buffer = self.data[20:]
