@@ -294,6 +294,14 @@ class HypothesisParser:
         try:
             header_end = self._parse_header_with_curator()
             
+            # Get the parsed header to access offsets
+            header_region = self.curator.regions[0] if self.curator.regions else None
+            if not header_region or not isinstance(header_region.parsed_value, TableHeader):
+                # Fallback to legacy parsing if header parsing failed
+                return self._parse_legacy_fallback(header_end)
+            
+            header = header_region.parsed_value
+            
             # PASS 2: Determine timestamp location using FIXED OFFSET from END
             # *** CRITICAL DISCOVERY ***
             # The timestamp separator is ALWAYS at exactly 20 bytes from the END of table 0xc
@@ -325,8 +333,9 @@ class HypothesisParser:
                         except (ValueError, OSError):
                             pass
             
-            # PASS 3: Use legacy separator-based parsing with known timestamp location
-            return self._parse_legacy(header_end, timestamp_offset, timestamp_val)
+            # PASS 3: Use POINTER-DRIVEN parsing with header offsets
+            # This significantly reduces diff noise by using stable boundaries
+            return self._parse_pointer_driven(header, header_end, timestamp_offset, timestamp_val)
 
         except Exception:
             pass
@@ -359,6 +368,158 @@ class HypothesisParser:
         )
 
         return end_offset
+    
+    def _parse_pointer_driven(self, header: TableHeader, header_end: int, timestamp_offset: Optional[int], timestamp_val: Optional[int]) -> List[Region]:
+        """
+        Pointer-driven parsing using header offsets to define record boundaries.
+        This reduces diff noise by using stable boundaries from the header.
+        """
+        # Extract valid offsets from header (only those that point into data region)
+        candidate_offsets = []
+        for offset in header.offsets:
+            # Only include offsets that point into the data region after header
+            if header_end <= offset < len(self.data):
+                candidate_offsets.append(offset)
+        
+        # Remove duplicates and sort
+        candidate_offsets = sorted(set(candidate_offsets))
+        
+        if not candidate_offsets:
+            # No valid offsets, fall back to legacy parsing
+            return self._parse_legacy_fallback(header_end, timestamp_offset, timestamp_val)
+        
+        # Filter offsets to keep only those that are well-separated
+        # This prevents creating tiny records that break PropertyValue detection
+        MIN_RECORD_SIZE = 32  # Minimum size for PropertyValue detection
+        valid_offsets = [candidate_offsets[0]]  # Always keep first offset
+        
+        for offset in candidate_offsets[1:]:
+            if offset - valid_offsets[-1] >= MIN_RECORD_SIZE:
+                valid_offsets.append(offset)
+        
+        # Parse records using pointer boundaries
+        for i in range(len(valid_offsets)):
+            start_offset = valid_offsets[i]
+            
+            # Determine end of this record
+            if i + 1 < len(valid_offsets):
+                end_offset = valid_offsets[i + 1]
+            else:
+                # Last record: check if timestamp is after this offset
+                if timestamp_offset and timestamp_offset > start_offset:
+                    end_offset = timestamp_offset
+                else:
+                    end_offset = len(self.data)
+            
+            record_size = end_offset - start_offset
+            if record_size <= 0:
+                continue
+            
+            # Dispatch and claim this record
+            self._dispatch_and_claim_pointer_record(start_offset, record_size, timestamp_offset, timestamp_val)
+        
+        # Claim timestamp if it exists and hasn't been claimed yet
+        if timestamp_offset:
+            # Find where timestamp should be claimed
+            last_claimed_offset = valid_offsets[-1] if valid_offsets else header_end
+            
+            # Find the last valid offset before timestamp
+            last_before_ts = header_end
+            for off in valid_offsets:
+                if off < timestamp_offset:
+                    last_before_ts = off
+                else:
+                    break
+            
+            # Check if there's a gap between last offset and timestamp
+            # This can happen if timestamp is not pointed to by header
+            if timestamp_offset > last_before_ts:
+                # The timestamp block should extend from the last pointer to the timestamp
+                # But we may have already claimed it in the loop above
+                # Let's check if we need to claim the timestamp specifically
+                
+                # Just claim the timestamp directly
+                self.curator.seek(timestamp_offset)
+                self.curator.claim(
+                    "Timestamp",
+                    16,
+                    lambda d, v=timestamp_val: TimestampRecord(timestamp_offset, v)
+                )
+                
+                # Claim any remaining data after timestamp
+                remaining_start = timestamp_offset + 16
+                if remaining_start < len(self.data):
+                    remaining_size = len(self.data) - remaining_start
+                    if remaining_size > 0:
+                        self._claim_generic_or_property(remaining_start, remaining_size)
+        
+        return self.curator.get_regions()
+    
+    def _dispatch_and_claim_pointer_record(self, offset: int, size: int, timestamp_offset: Optional[int], timestamp_val: Optional[int]):
+        """
+        Dispatch and claim a record defined by header pointer boundaries.
+        NOTE: Timestamp is handled separately, not in this method.
+        """
+        if size <= 0:
+            return
+        
+        # No timestamp handling here - it's done in _parse_pointer_driven
+        self._claim_record_segment(offset, size)
+    
+    def _claim_record_segment(self, offset: int, size: int):
+        """Claim a record segment, checking for known patterns."""
+        if size <= 0:
+            return
+        
+        self.curator.seek(offset)
+        
+        # Check for separator
+        if size >= 16:
+            sep_info = self._check_separator(offset)
+            if sep_info:
+                cursor_pos, value_64 = sep_info
+                self.curator.claim(
+                    "Separator",
+                    16,
+                    lambda d, p=cursor_pos, v=value_64: SeparatorRecord(p, v)
+                )
+                # Claim remaining if any
+                if size > 16:
+                    self._claim_record_segment(offset + 16, size - 16)
+                return
+        
+        # Check for NetUpdate
+        if size >= 12:
+            record_data = self.data[offset:offset + size]
+            t = struct.unpack_from('<I', record_data, 0)[0]
+            if t == 19 and len(record_data) >= 12:
+                s1, s2 = struct.unpack_from('<II', record_data, 4)
+                if s1 == s2 and s1 > 0:
+                    payload_size = s1
+                    full_size = 12 + payload_size
+                    rem = full_size % 4
+                    aligned_size = full_size + (4 - rem if rem != 0 else 0)
+                    
+                    if aligned_size <= size:
+                        # Claim as NetUpdate
+                        net_size = self._try_claim_net_update(offset)
+                        if net_size > 0:
+                            # Claim remaining if any
+                            if size > net_size:
+                                self._claim_record_segment(offset + net_size, size - net_size)
+                            return
+        
+        # Check for padding
+        if size >= 16:
+            pad_size = self._try_claim_padding(offset)
+            if pad_size > 0 and pad_size <= size:
+                # Claim remaining if any
+                if size > pad_size:
+                    self._claim_record_segment(offset + pad_size, size - pad_size)
+                return
+        
+        # Default: claim as property value or generic
+        self._claim_generic_or_property(offset, size)
 
     def _dispatch_and_claim_record(self, offset: int, size: int, timestamp_offset: Optional[int], timestamp_val: Optional[int]):
         """
@@ -484,7 +645,7 @@ class HypothesisParser:
                     GenericRecord(p, s, rd, sr)
             )
     
-    def _parse_legacy(self, header_end: int, timestamp_offset: Optional[int] = None, timestamp_val: Optional[int] = None) -> List[Region]:
+    def _parse_legacy_fallback(self, header_end: int, timestamp_offset: Optional[int] = None, timestamp_val: Optional[int] = None) -> List[Region]:
         """Legacy parsing method as fallback."""
         # If timestamp wasn't provided, try to find it by scanning
         if timestamp_offset is None:
