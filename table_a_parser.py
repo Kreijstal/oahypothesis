@@ -1,5 +1,6 @@
 # table_a_parser.py - Parser for string table 0xa
 import struct
+from oaparser import BinaryCurator
 
 class TableAParser:
     """
@@ -24,38 +25,28 @@ class TableAParser:
         if len(self.data) < 20:
             return f"String Table: Too small ({len(self.data)} bytes)"
         
-        # Format the output
-        lines = [f"String Table (0xa): {len(self.data)} bytes"]
-        lines.append("="*80)
+        curator = BinaryCurator(self.data)
         
-        # Show the 20-byte header in binary format
-        lines.append("\nHeader (20 bytes):")
-        header_data = self.data[:20]
-        for i in range(0, 20, 16):
-            chunk = header_data[i:i+16]
-            hex_part = ' '.join(f'{b:02x}' for b in chunk)
-            ascii_part = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in chunk)
-            lines.append(f"  {i:04x}: {hex_part:<48} |{ascii_part}|")
+        # Claim the 16-byte header
+        def parse_header(data):
+            type_id, num_entries, pad1, pad2 = struct.unpack('<IIII', data)
+            lines = []
+            lines.append(f"Type ID: 0x{type_id:08x}")
+            lines.append(f"Number of entries: {num_entries} (0x{num_entries:x})")
+            lines.append(f"Padding1: 0x{pad1:08x}")
+            lines.append(f"Padding2: 0x{pad2:08x}")
+            return "\n    ".join(lines)
         
-        # Parse header fields
-        if len(self.data) >= 16:
-            type_id, num_entries, pad1, pad2 = struct.unpack('<IIII', self.data[:16])
-            lines.append(f"\n  Type ID: 0x{type_id:08x}")
-            lines.append(f"  Number of entries: {num_entries} (0x{num_entries:x})")
-            lines.append(f"  Padding1: 0x{pad1:08x}")
-            lines.append(f"  Padding2: 0x{pad2:08x}")
-            if len(self.data) >= 20:
-                extra_pad = struct.unpack('<I', self.data[16:20])[0]
-                lines.append(f"  Extra padding: 0x{extra_pad:08x}")
+        curator.claim("Header (16 bytes)", 16, parse_header)
         
-        # Skip the 20-byte header (16 bytes table info + 4 bytes padding)
+        # Claim the 4-byte extra padding
+        curator.claim("Extra Padding", 4, lambda d: f"0x{struct.unpack('<I', d)[0]:08x}")
+        
+        # Extract all null-terminated strings from remaining data
         string_buffer = self.data[20:]
-        
-        lines.append(f"\nString Data ({len(string_buffer)} bytes):")
-        lines.append("-"*80)
-        
-        # Extract all null-terminated strings
         current_offset = 0
+        string_regions = []
+        
         while current_offset < len(string_buffer):
             # Find the next null terminator
             try:
@@ -66,26 +57,44 @@ class TableAParser:
             # Decode the string
             string_data = string_buffer[current_offset:null_pos]
             
-            # Skip empty strings
-            if string_data:
-                try:
-                    decoded_string = string_data.decode('utf-8')
-                    self.strings.append({
-                        'offset': current_offset,
-                        'string': decoded_string
-                    })
-                except UnicodeDecodeError:
-                    self.strings.append({
-                        'offset': current_offset,
-                        'string': f'[DECODE ERROR: {string_data!r}]'
-                    })
+            # Claim even empty strings to be lossless
+            if string_data or null_pos - current_offset > 0:
+                string_len = null_pos - current_offset + 1  # Include null terminator
+                
+                def make_parser(data):
+                    try:
+                        decoded = data.rstrip(b'\x00').decode('utf-8')
+                        return f'"{decoded}"' if decoded else "(empty string)"
+                    except UnicodeDecodeError:
+                        return f'[DECODE ERROR: {data!r}]'
+                
+                curator.seek(20 + current_offset)
+                curator.claim(f"String at 0x{current_offset:04x}", string_len, make_parser)
+                
+                # Store for later enumeration
+                if string_data:
+                    try:
+                        decoded_string = string_data.decode('utf-8')
+                        self.strings.append({
+                            'offset': current_offset,
+                            'string': decoded_string
+                        })
+                    except UnicodeDecodeError:
+                        self.strings.append({
+                            'offset': current_offset,
+                            'string': f'[DECODE ERROR: {string_data!r}]'
+                        })
             
             current_offset = null_pos + 1
         
-        lines.append(f"Total strings found: {len(self.strings)}")
+        # Generate the report using BinaryCurator
+        lines = [f"String Table (0xa): {len(self.data)} bytes"]
+        lines.append("="*80)
         lines.append("")
-        
-        # Show ALL strings (no skipping)
+        lines.append(curator.report())
+        lines.append("")
+        lines.append("="*80)
+        lines.append(f"String Summary: {len(self.strings)} non-empty strings found")
         for i, entry in enumerate(self.strings):
             lines.append(f"  [{i:3d}] 0x{entry['offset']:04x}: '{entry['string']}'")
         
