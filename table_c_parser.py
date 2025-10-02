@@ -69,59 +69,40 @@ class TableHeader:
     
     def __str__(self):
         """
-        Print ALL header data - following binary_curator principle.
-        Every claimed byte must be printed or asserted.
-        Now treats header as a struct with named and unknown fields.
+        Prints all header fields sequentially, preserving their original order.
+        Summarizes long runs of identical values to maintain readability.
         """
         lines = [
             f"Header ID: {format_int(self.header_id)}",
             f"Header Size: {self.pointer_list_end_offset} bytes",
             f"Total Fields: {len(self.raw_all_fields)}",
             "",
-            "=== KNOWN FIELDS ===",
-            f"  [Field 0] first_record_offset: 0x{self.first_record_offset:04x}",
+            "--- Header Fields (in original order) ---"
         ]
-        
-        # Boundary offsets (31-33) - known to be true offsets
-        if self.boundary_offsets_31_33:
-            lines.append("")
-            lines.append("  [Fields 31-33] boundary_offsets (verified record boundaries):")
-            for i, offset in enumerate(self.boundary_offsets_31_33, start=31):
-                lines.append(f"    [{i:03d}]: 0x{offset:04x}")
-        
-        # Unknown offset fields (1-30)
-        if self.unknown_offsets_1_30:
-            lines.append("")
-            lines.append("  [Fields 1-30] unknown_offsets (purpose unclear):")
-            for i, val in enumerate(self.unknown_offsets_1_30, start=1):
-                # Only show non-zero values to reduce clutter
-                if val != 0:
-                    lines.append(f"    [{i:03d}]: 0x{val:x}")
-        
-        # Config values (34+)
-        if self.config_values:
-            lines.append("")
-            lines.append("=== CONFIG VALUES (Fields 34+) ===")
-            i = 0
-            offset_base = 34
-            while i < len(self.config_values):
-                val = self.config_values[i]
-                # Check for repeated values
-                if val == 0 and i + 1 < len(self.config_values):
-                    # Count consecutive zeros
-                    count = 1
-                    j = i + 1
-                    while j < len(self.config_values) and self.config_values[j] == 0:
-                        count += 1
-                        j += 1
-                    if count >= 4:  # Only summarize if 4+ consecutive zeros
-                        lines.append(f"  [{offset_base+i:03d}-{offset_base+j-1:03d}]: 0x{val:016x} (repeats {count} times)")
-                        i = j
-                        continue
-                # Show non-zero values
-                if val != 0:
-                    lines.append(f"  [{offset_base+i:03d}]: 0x{val:x}")
-                i += 1
+
+        if not self.raw_all_fields:
+            lines.append("  (No fields to display)")
+            return "\n".join(lines)
+
+        i = 0
+        while i < len(self.raw_all_fields):
+            val = self.raw_all_fields[i]
+
+            # Check for repeated values
+            count = 1
+            j = i + 1
+            while j < len(self.raw_all_fields) and self.raw_all_fields[j] == val:
+                count += 1
+                j += 1
+
+            if count > 3:  # Summarize if 4 or more repeats
+                lines.append(f"  [Fields {i:03d}-{j-1:03d}]: 0x{val:x} (repeats {count} times)")
+                i = j  # Move index past the repeated block
+            else:
+                # Print individual fields if not part of a long run
+                for k in range(i, j):
+                    lines.append(f"  [Field {k:03d}]: 0x{val:x}")
+                i = j
         
         return "\n".join(lines)
 

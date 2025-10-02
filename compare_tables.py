@@ -4,6 +4,7 @@ Compare tables between two .oa files to identify changes
 """
 import sys
 import struct
+from table_a_parser import TableAParser
 
 def read_oa_file(filepath):
     """Read .oa file and return table information"""
@@ -95,7 +96,23 @@ def compare_tables(file1, file2):
             
             print(f"0x{tid:<10x} {entry['size1']:<12} {entry['size2']:<12} "
                   f"{entry['size_diff']:+12} {table_name}")
-    
+
+            # If this is the string table, show the added strings
+            if tid == 0xa:
+                parser1 = TableAParser(tables1[tid]['data'])
+                parser1.parse()
+                strings1 = {s['string'] for s in parser1.strings}
+
+                parser2 = TableAParser(tables2[tid]['data'])
+                parser2.parse()
+                strings2 = {s['string'] for s in parser2.strings}
+
+                added_strings = strings2 - strings1
+                if added_strings:
+                    print(f"    {'':<12} {'Added strings:'}")
+                    for s in sorted(list(added_strings))[:5]: # Show first 5
+                        print(f"    {'':<14} - \"{s}\"")
+
     return changed_tables, unchanged_tables
 
 def get_table_name(tid):
