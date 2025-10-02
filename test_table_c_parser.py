@@ -11,6 +11,7 @@ Tests:
 import sys
 import struct
 from table_c_parser import HypothesisParser, PropertyValueRecord, TimestampRecord
+from oaparser.binary_curator import ClaimedRegion
 
 def test_timestamps():
     """Test that timestamps are correctly extracted from all files."""
@@ -51,13 +52,14 @@ def test_timestamps():
                         f.seek(offsets[i])
                         data = f.read(sizes[i])
                         parser = HypothesisParser(data)
-                        parser.parse()
+                        regions = parser.parse()
                         
                         found_ts = None
-                        for record in parser.records:
-                            if isinstance(record, TimestampRecord):
-                                found_ts = record.timestamp_val & 0xFFFFFFFF
-                                break
+                        for region in regions:
+                            if isinstance(region, ClaimedRegion):
+                                if isinstance(region.parsed_value, TimestampRecord):
+                                    found_ts = region.parsed_value.timestamp_val & 0xFFFFFFFF
+                                    break
                         
                         if found_ts == expected_ts:
                             print(f"  ✓ {filename}: {found_ts}")
@@ -102,10 +104,13 @@ def test_property_value_detection():
                         f.seek(offsets[i])
                         data = f.read(sizes[i])
                         parser = HypothesisParser(data)
-                        parser.parse()
+                        regions = parser.parse()
                         
-                        prop_vals = [r.property_value_id for r in parser.records 
-                                    if isinstance(r, PropertyValueRecord)]
+                        prop_vals = []
+                        for region in regions:
+                            if isinstance(region, ClaimedRegion):
+                                if isinstance(region.parsed_value, PropertyValueRecord):
+                                    prop_vals.append(region.parsed_value.property_value_id)
                         
                         if expected_id in prop_vals:
                             print(f"  ✓ {filename}: Found property value ID {expected_id}")
@@ -152,9 +157,13 @@ def test_property_value_changes():
                             f.seek(offsets[i])
                             data = f.read(sizes[i])
                             parser = HypothesisParser(data)
-                            parser.parse()
-                            return [(r.offset, r.property_value_id) for r in parser.records 
-                                   if isinstance(r, PropertyValueRecord)]
+                            regions = parser.parse()
+                            result = []
+                            for region in regions:
+                                if isinstance(region, ClaimedRegion):
+                                    if isinstance(region.parsed_value, PropertyValueRecord):
+                                        result.append((region.start, region.parsed_value.property_value_id))
+                            return result
                 return []
             
             vals1 = get_prop_vals(file1)

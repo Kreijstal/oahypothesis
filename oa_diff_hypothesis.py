@@ -239,16 +239,32 @@ def diff_oa_tables(file_old_path, file_new_path):
                 else:
                     return (record_type, str(record)[:50])
             
+            # Parse to get regions
+            from oaparser.binary_curator import ClaimedRegion
+            regions_old = parser_old.parse()
+            regions_new = parser_new.parse()
+            
+            # Extract records from regions
+            records_old = []
+            for region in regions_old:
+                if isinstance(region, ClaimedRegion) and region.parsed_value:
+                    records_old.append(region.parsed_value)
+            
+            records_new = []
+            for region in regions_new:
+                if isinstance(region, ClaimedRegion) and region.parsed_value:
+                    records_new.append(region.parsed_value)
+            
             # Build signature maps
             old_by_sig = {}
-            for i, r in enumerate(parser_old.records):
+            for i, r in enumerate(records_old):
                 sig = get_record_signature(r)
                 if sig not in old_by_sig:
                     old_by_sig[sig] = []
                 old_by_sig[sig].append((i, r))
             
             new_by_sig = {}
-            for i, r in enumerate(parser_new.records):
+            for i, r in enumerate(records_new):
                 sig = get_record_signature(r)
                 if sig not in new_by_sig:
                     new_by_sig[sig] = []

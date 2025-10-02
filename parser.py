@@ -131,13 +131,12 @@ if __name__ == '__main__':
                     render_report(regions, f"Table Directory: {size} bytes")
 
                 elif table_id == 0x0c:
-                    print("\n--- Parsed Structure of Table 0x0c ---")
+                    print("\n--- Table 0xc (Netlist Data) ---")
                     f.seek(offset)
                     # Pass string table data to enable string resolution
                     parser = HypothesisParser(f.read(size), string_table_data)
-                    parser.parse()
-                    for record in parser.records:
-                        print(record)
+                    regions = parser.parse()
+                    render_report(regions, f"Netlist Data: {size} bytes")
 
                 elif table_id == 0x133:
                     print("\n--- Table 0x133 ---")
