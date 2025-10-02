@@ -9,6 +9,7 @@ from table_a_parser import TableAParser
 from table_b_parser import TableBParser
 from table_1d_parser import Table1dParser
 from table_1_parser import Table1Parser
+from table_107_parser import Table107Parser
 
 # Import rendering utilities
 from oaparser import render_report, render_regions_to_string
@@ -67,8 +68,9 @@ if __name__ == '__main__':
 
     if len(args) != 1:
         print("Usage: python3 parser.py [--hexdump | --intarray] <oa_file>")
-        print("\n  Decodes Tables 0xa, 0xb, 0x1d, 0xc, and 0x133 by default.")
+        print("\n  Decodes Tables 0xa, 0xb, 0x1d, 0xc, 0x107, and 0x133 by default.")
         print("  Table 0xc now resolves string references from Table 0xa.")
+        print("  Table 0x107 now resolves name pointers using the formula: index = (value - 1) // 2 + 64")
         print("  Use flags to dump all OTHER tables in a raw format.")
         sys.exit(1)
 
@@ -84,12 +86,21 @@ if __name__ == '__main__':
             offsets = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
             sizes = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
 
-            # FIRST PASS: Extract string table
+            # FIRST PASS: Extract string table and parse it
             string_table_data = None
+            string_list = []
             for i in range(used):
                 if ids[i] == 0x0a:
                     f.seek(offsets[i])
                     string_table_data = f.read(sizes[i])
+                    # Parse string table into list of strings
+                    pos = 0
+                    while pos < len(string_table_data):
+                        end = string_table_data.find(b'\x00', pos)
+                        if end == -1:
+                            break
+                        string_list.append(string_table_data[pos:end].decode('utf-8', errors='replace'))
+                        pos = end + 1
                     break
 
             # SECOND PASS: Parse all tables
@@ -137,6 +148,14 @@ if __name__ == '__main__':
                     parser = HypothesisParser(f.read(size), string_table_data)
                     regions = parser.parse()
                     render_report(regions, f"Netlist Data: {size} bytes")
+
+                elif table_id == 0x107:
+                    print("\n--- Table 0x107 (Object Edit Metadata) ---")
+                    f.seek(offset)
+                    # Pass string list to enable name pointer resolution
+                    parser = Table107Parser(f.read(size), string_list)
+                    regions = parser.parse()
+                    render_report(regions, f"Object Edit Metadata: {size} bytes")
 
                 elif table_id == 0x133:
                     print("\n--- Table 0x133 ---")

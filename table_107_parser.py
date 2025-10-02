@@ -56,7 +56,7 @@ class Table107Parser:
 
         # Schema of known data structures within this table.
         self.KNOWN_RECORDS_SCHEMA = [
-            ("R0/V0 Instance Name", 0x2b5, 1, self._parse_name_pointer),
+            ("R0/V0 Instance Name", 0x2b9, 1, self._parse_name_pointer),
             ("C0 Instance Name", 0x2c1, 1, self._parse_name_pointer),
             ("R0/V0 Edit Count", 0x2e8, 4, self._parse_version_counter),
         ]
@@ -65,7 +65,7 @@ class Table107Parser:
         """Converts a raw byte value into a string table index."""
         if value < 1 or (value - 1) % 2 != 0:
             return None
-        return ((value - 1) // 2) + 46
+        return ((value - 1) // 2) + 64
 
     # --- Parser Functions for `claim()` ---
     # These functions take raw bytes and return the rich data object.

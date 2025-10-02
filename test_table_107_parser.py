@@ -53,7 +53,7 @@ def test_formula_validation():
     print("TEST 1: Formula Validation")
     print("="*70)
     print()
-    print("Formula: index = (value - 1) // 2 + 46")
+    print("Formula: index = (value - 1) // 2 + 64")
     print("Testing on offset 0x2c1 (C0 Instance Name)")
     print()
     
@@ -87,7 +87,7 @@ def test_formula_validation():
                 if byte_value == 0:
                     print(f"  ✓ {filename:12s} ({description:20s}): 0x00 (empty/not set)")
                 elif byte_value >= 1 and (byte_value - 1) % 2 == 0:
-                    calculated_index = (byte_value - 1) // 2 + 46
+                    calculated_index = (byte_value - 1) // 2 + 64
                     resolved_string = strings[calculated_index] if calculated_index < len(strings) else '???'
                     print(f"  ✓ {filename:12s} ({description:20s}): 0x{byte_value:02x} → index {calculated_index} → '{resolved_string}'")
                 else:
@@ -228,10 +228,10 @@ def main():
         print("ALL TESTS PASSED ✓")
         print()
         print("NOTES:")
-        print("- The formula index = (value - 1) // 2 + 46 is working correctly")
-        print("- Parser successfully claims known fields at offsets 0x2b5, 0x2c1, 0x2e8")
-        print("- Changes.txt documents sch15-18 transitions not in repository")
-        print("- Further validation requires sch15-18.oa files")
+        print("- The formula index = (value - 1) // 2 + 64 is working correctly")
+        print("- Parser successfully claims known fields at offsets 0x2b9, 0x2c1, 0x2e8")
+        print("- Changes.txt documents sch15-18 transitions which are in repository")
+        print("- Formula validated against sch14-18.oa files")
         return 0
     else:
         print("SOME TESTS FAILED ✗")
