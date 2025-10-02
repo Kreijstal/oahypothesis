@@ -49,9 +49,9 @@ run_test "parser.py --hexdump mode" \
 run_test "compare_tables.py" \
     "python3 compare_tables.py sch_old.oa sch_new.oa"
 
-# Test 5: analyze_changes.py
-run_test "analyze_changes.py" \
-    "python3 analyze_changes.py sch_old.oa sch_new.oa"
+# Test 5: compare_tables.py (replaces analyze_changes.py)
+run_test "compare_tables.py (replaces analyze_changes.py)" \
+    "python3 compare_tables.py sch_old.oa sch_new.oa"
 
 # Test 6: String table finds "popop" in sch_old.oa
 run_test "Find 'popop' in sch_old.oa" \
@@ -65,9 +65,9 @@ run_test "Find 'THISISNOWTHERESISTOR' in sch_new.oa" \
 run_test "Detect 7 changed tables" \
     "python3 compare_tables.py sch_old.oa sch_new.oa | grep -q 'Tables that changed: 7'"
 
-# Test 9: analyze_changes detects string addition
+# Test 9: compare_tables detects string addition
 run_test "Detect string addition" \
-    "python3 analyze_changes.py sch_old.oa sch_new.oa | grep -q 'THISISNOWTHERESISTOR'"
+    "python3 compare_tables.py sch_old.oa sch_new.oa | grep -q 'THISISNOWTHERESISTOR'"
 
 # Test 10: String table size increase detected
 run_test "Detect string table size increase" \
