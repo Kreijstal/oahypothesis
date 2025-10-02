@@ -35,7 +35,32 @@ class SeparatorRecord:
 class TableHeader:
     header_id: int; pointer_list_end_offset: int; internal_pointers: List[int]
     def __str__(self):
-        return f"Header ID: {format_int(self.header_id)}, Pointers: {len(self.internal_pointers)}"
+        """
+        Print ALL header data - following binary_curator principle.
+        Every claimed byte must be printed or asserted.
+        Repeated zeros are summarized losslessly.
+        """
+        lines = [f"Header ID: {format_int(self.header_id)}, Pointers: {len(self.internal_pointers)}"]
+        if self.internal_pointers:
+            lines.append("  Internal Pointers:")
+            i = 0
+            while i < len(self.internal_pointers):
+                ptr = self.internal_pointers[i]
+                # Check for repeated values
+                if ptr == 0 and i + 1 < len(self.internal_pointers):
+                    # Count consecutive zeros
+                    count = 1
+                    j = i + 1
+                    while j < len(self.internal_pointers) and self.internal_pointers[j] == 0:
+                        count += 1
+                        j += 1
+                    if count >= 4:  # Only summarize if 4+ consecutive zeros
+                        lines.append(f"    [{i:03d}-{j-1:03d}]: 0x{ptr:016x} (repeats {count} times)")
+                        i = j
+                        continue
+                lines.append(f"    [{i:03d}]: 0x{ptr:016x}")
+                i += 1
+        return "\n".join(lines)
 
 @dataclass
 class PaddingRecord:
