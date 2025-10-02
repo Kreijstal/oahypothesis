@@ -3,7 +3,7 @@ import struct
 import datetime
 from dataclasses import dataclass
 from typing import List, Optional
-from oaparser.binary_curator import BinaryCurator, Region
+from oaparser.binary_curator import BinaryCurator, Region, NestedUnclaimedData
 
 # --- Utility Functions ---
 def format_int(value): return f"{value} (0x{value:x})"
@@ -33,25 +33,33 @@ class SeparatorRecord:
 
 @dataclass
 class TableHeader:
-    header_id: int; pointer_list_end_offset: int; internal_pointers: List[int]
+    header_id: int
+    pointer_list_end_offset: int
+    offsets: List[int]  # Indices 0-33 (approx.): True 64-bit pointers/offsets
+    config_values: List[int]  # Indices 34+: Static configuration values
+    
     def __str__(self):
         """
         Print ALL header data - following binary_curator principle.
         Every claimed byte must be printed or asserted.
         Repeated zeros are summarized losslessly.
+        Now separates offsets from config values for clarity.
         """
-        lines = [f"Header ID: {format_int(self.header_id)}, Pointers: {len(self.internal_pointers)}"]
-        if self.internal_pointers:
-            lines.append("  Internal Pointers:")
+        lines = [f"Header ID: {format_int(self.header_id)}"]
+        lines.append(f"Total Pointers/Values: {len(self.offsets) + len(self.config_values)}")
+        
+        # Section 1: Offsets (location-dependent pointers)
+        if self.offsets:
+            lines.append("  Offsets (location-dependent):")
             i = 0
-            while i < len(self.internal_pointers):
-                ptr = self.internal_pointers[i]
+            while i < len(self.offsets):
+                ptr = self.offsets[i]
                 # Check for repeated values
-                if ptr == 0 and i + 1 < len(self.internal_pointers):
+                if ptr == 0 and i + 1 < len(self.offsets):
                     # Count consecutive zeros
                     count = 1
                     j = i + 1
-                    while j < len(self.internal_pointers) and self.internal_pointers[j] == 0:
+                    while j < len(self.offsets) and self.offsets[j] == 0:
                         count += 1
                         j += 1
                     if count >= 4:  # Only summarize if 4+ consecutive zeros
@@ -60,6 +68,29 @@ class TableHeader:
                         continue
                 lines.append(f"    [{i:03d}]: 0x{ptr:016x}")
                 i += 1
+        
+        # Section 2: Config values (static configuration)
+        if self.config_values:
+            lines.append("  Config Values (static):")
+            i = 0
+            offset_base = len(self.offsets)
+            while i < len(self.config_values):
+                val = self.config_values[i]
+                # Check for repeated values
+                if val == 0 and i + 1 < len(self.config_values):
+                    # Count consecutive zeros
+                    count = 1
+                    j = i + 1
+                    while j < len(self.config_values) and self.config_values[j] == 0:
+                        count += 1
+                        j += 1
+                    if count >= 4:  # Only summarize if 4+ consecutive zeros
+                        lines.append(f"    [{offset_base+i:03d}-{offset_base+j-1:03d}]: 0x{val:016x} (repeats {count} times)")
+                        i = j
+                        continue
+                lines.append(f"    [{offset_base+i:03d}]: 0x{val:016x}")
+                i += 1
+        
         return "\n".join(lines)
 
 @dataclass
@@ -140,13 +171,40 @@ class PropertyValueRecord:
     data: bytes
     property_value_id: int
     string_references: List[tuple]  # [(offset_in_record, string_table_offset, resolved_string)]
+    # Known fields (first bytes of the record)
+    record_type: Optional[int] = None  # First 4 bytes
+    marker: Optional[int] = None  # Second 4 bytes
+    # Unclaimed payload - the remainder after known fields
+    unclaimed_payload: Optional[NestedUnclaimedData] = None
 
     def __str__(self):
+        """
+        Display PropertyValue with nested curation.
+        Shows claimed fields first, then explicitly declares unclaimed payload.
+        """
+        lines = []
+        
+        # Header with property value ID
         parts = [f"PropertyValue ID:{format_int(self.property_value_id)}"]
+        
+        # Show known fields if available
+        if self.record_type is not None:
+            parts.append(f"Type:{format_int(self.record_type)}")
+        if self.marker is not None:
+            parts.append(f"Marker:{format_int(self.marker)}")
+        
         if self.string_references:
             strs = [f'"{r[2]}"' for r in self.string_references[:2]]
             parts.append(f"Strings:{','.join(strs)}")
-        return " ".join(parts)
+        
+        lines.append(" ".join(parts))
+        
+        # Show unclaimed payload if present
+        if self.unclaimed_payload:
+            lines.append("")  # Blank line for readability
+            lines.append(str(self.unclaimed_payload))
+        
+        return "\n".join(lines)
 
 @dataclass
 class GenericRecord:
@@ -364,10 +422,16 @@ class HypothesisParser:
 
         pointers = [struct.unpack_from('<Q', self.data, i)[0] for i in range(8, end_offset, 8)]
 
+        # Split pointers into offsets (0-33) and config values (34+)
+        # Based on analysis, the boundary is approximately at index 34
+        boundary = 34
+        offsets = pointers[:boundary] if len(pointers) >= boundary else pointers
+        config_values = pointers[boundary:] if len(pointers) > boundary else []
+
         self.curator.claim(
             "Table Header",
             end_offset,
-            lambda d: TableHeader(header_id, end_offset, pointers)
+            lambda d: TableHeader(header_id, end_offset, offsets, config_values)
         )
 
         return end_offset
@@ -485,18 +549,27 @@ class HypothesisParser:
         record_data = self.data[cursor:end]
 
         # First, attempt to identify it as a PropertyValueRecord
-        property_value_id = self._check_property_value(record_data)
+        property_value_info = self._check_property_value(record_data)
 
         self.curator.seek(cursor)
         string_refs = self._find_string_refs_in_data(record_data)
 
-        if property_value_id is not None:
+        if property_value_info is not None:
             # It's a known property value
             self.curator.claim(
                 "PropertyValue",
                 size,
-                lambda d, p=cursor, s=size, rd=record_data, pid=property_value_id, sr=string_refs:
-                    PropertyValueRecord(p, s, rd, pid, sr)
+                lambda d, p=cursor, s=size, rd=record_data, info=property_value_info, sr=string_refs:
+                    PropertyValueRecord(
+                        offset=p,
+                        size=s,
+                        data=rd,
+                        property_value_id=info['property_value_id'],
+                        string_references=sr,
+                        record_type=info['record_type'],
+                        marker=info['marker'],
+                        unclaimed_payload=info['unclaimed_payload']
+                    )
             )
         else:
             # Fallback to a GenericRecord
@@ -509,10 +582,11 @@ class HypothesisParser:
 
         return size
 
-    def _check_property_value(self, data: bytes) -> Optional[int]:
+    def _check_property_value(self, data: bytes) -> Optional[dict]:
         """
         Checks for a very specific Property Value record pattern.
         This record must start with 19, have a marker at index 1, and be of a certain size.
+        Returns a dict with parsed info if it matches, None otherwise.
         """
         num_ints = len(data) // 4
         if num_ints < 8:
@@ -525,7 +599,21 @@ class HypothesisParser:
         if record_type == 19 and marker == 0xc8000000:
             val_at_index_7 = struct.unpack_from('<I', data, 7 * 4)[0]
             if 20 < val_at_index_7 < 200:
-                return val_at_index_7
+                # We understand the first 32 bytes (8 integers)
+                # The rest is unclaimed payload
+                known_size = 32
+                unclaimed_bytes = data[known_size:] if len(data) > known_size else b''
+                
+                return {
+                    'property_value_id': val_at_index_7,
+                    'record_type': record_type,
+                    'marker': marker,
+                    'unclaimed_payload': NestedUnclaimedData(
+                        label="UNCLAIMED PAYLOAD",
+                        data=unclaimed_bytes,
+                        description=f"Unknown data within PropertyValueRecord (after first 32 bytes)"
+                    ) if unclaimed_bytes else None
+                }
 
         return None
 
