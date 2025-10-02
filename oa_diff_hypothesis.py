@@ -189,29 +189,32 @@ def diff_oa_tables(file_old_path, file_new_path):
             print("\n")
             continue
 
-        # --- SPECIALIZED DIFF FOR TABLE 0xc ---
-        if table_id == 0xc:
-            print("  --- Structured Diff for Table 0xc (Netlist Data) ---")
-            parser_old = HypothesisParser(data_old)
-            parser_old.parse()
-            lines_old = [str(r) for r in parser_old.records]
-
-            parser_new = HypothesisParser(data_new)
-            parser_new.parse()
-            lines_new = [str(r) for r in parser_new.records]
-
-            diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
-            
-            # Print the resulting structured diff
-            diff_lines = list(diff)[2:] # Skip the ---/+++ file headers
-            if not diff_lines:
-                 print("  NOTE: Parsed structure is identical, but raw byte-level differences may exist.")
-            else:
-                for line in diff_lines:
-                    # Add extra indentation to fit our report format
-                    print(f"  {line}")
-            print("\n")
-            continue # Skip the generic hex diff for this table
+        # --- SPECIALIZED DIFF FOR TABLE 0xc (DISABLED) ---
+        # The structured diff for table 0xc is too verbose because small changes
+        # in values can cause the parser to interpret the structure differently,
+        # leading to cascading misalignments. Using hex diff instead.
+        # if table_id == 0xc:
+        #     print("  --- Structured Diff for Table 0xc (Netlist Data) ---")
+        #     parser_old = HypothesisParser(data_old)
+        #     parser_old.parse()
+        #     lines_old = [str(r) for r in parser_old.records]
+        #
+        #     parser_new = HypothesisParser(data_new)
+        #     parser_new.parse()
+        #     lines_new = [str(r) for r in parser_new.records]
+        #
+        #     diff = difflib.unified_diff(lines_old, lines_new, fromfile='OLD', tofile='NEW', lineterm='')
+        #     
+        #     # Print the resulting structured diff
+        #     diff_lines = list(diff)[2:] # Skip the ---/+++ file headers
+        #     if not diff_lines:
+        #          print("  NOTE: Parsed structure is identical, but raw byte-level differences may exist.")
+        #     else:
+        #         for line in diff_lines:
+        #             # Add extra indentation to fit our report format
+        #             print(f"  {line}")
+        #     print("\n")
+        #     continue # Skip the generic hex diff for this table
 
         # --- GENERIC HEX DIFF FOR ALL OTHER TABLES ---
         dump_old = hex_dump(data_old)
