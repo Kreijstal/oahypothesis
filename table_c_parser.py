@@ -295,6 +295,56 @@ def _generate_diff(expected: bytes, actual: bytes) -> List[str]:
     return diff_lines
 
 @dataclass
+class GeometryManagerRecord:
+    """
+    Parses the multi-part structure for schematic metadata records.
+    This record has stable Config and Footer blocks, with a variable Payload.
+    """
+    offset: int
+    data: bytes
+
+    # Parsed sub-records
+    padding: bytes
+    config: bytes
+    payload: bytes
+    footer: bytes
+    
+    # Class-level constants for assertion
+    EXPECTED_CONFIG = bytes.fromhex("0800000003000000")
+    EXPECTED_FOOTER = bytes.fromhex("000000c802000000e8001a03")  # Based on sch5.oa
+
+    def __str__(self):
+        lines = [f"Geometry Manager Record (Size: {len(self.data)} bytes)"]
+        
+        # 1. Analyze Padding - Its size is its primary interpretation
+        lines.append(f"  - Padding: {len(self.padding)} bytes")
+
+        # 2. Analyze Config Block - Assert or Show Data
+        if self.config == self.EXPECTED_CONFIG:
+            lines.append(f"  - Config: 8 bytes (OK, matches expected pattern)")
+        else:
+            lines.append(f"  - Config: 8 bytes (MODIFIED - VIOLATES EXPECTED PATTERN)")
+            # MANDATORY: Show the claimed data that does not match
+            lines.extend(_generate_diff(self.EXPECTED_CONFIG, self.config))
+
+        # 3. Analyze Payload - Interpret and Show All Data
+        payload_ints_str = "empty"
+        if self.payload:
+            payload_ints = [f"0x{v:x}" for v in struct.unpack(f'<{len(self.payload)//4}I', self.payload)]
+            payload_ints_str = f"{{{', '.join(payload_ints)}}}"
+        lines.append(f"  - Payload: {len(self.payload)} bytes, Values: {payload_ints_str}")
+
+        # 4. Analyze Footer - Assert or Show Data
+        if self.footer == self.EXPECTED_FOOTER:
+            lines.append(f"  - Footer: 12 bytes (OK, matches expected pattern)")
+        else:
+            lines.append(f"  - Footer: 12 bytes (MODIFIED - VIOLATES EXPECTED PATTERN)")
+            # MANDATORY: Show the claimed data that does not match
+            lines.extend(_generate_diff(self.EXPECTED_FOOTER, self.footer))
+
+        return "\n".join(lines)
+
+@dataclass
 class ComponentPropertyRecord:
     """
     Parses the 132-byte structure that appears to define a component property.
@@ -762,11 +812,66 @@ class HypothesisParser:
                 # Exit the loop
                 break
 
+    def _check_and_claim_geometry_manager(self, offset: int, size: int) -> bool:
+        """
+        Checks if a data block is a GeometryManagerRecord and claims it.
+        Returns True if claimed, False otherwise.
+        """
+        # Signature: 8-byte config + 12-byte footer
+        CONFIG_SIG = GeometryManagerRecord.EXPECTED_CONFIG
+        FOOTER_SIG = GeometryManagerRecord.EXPECTED_FOOTER
+        MIN_SIZE = len(CONFIG_SIG) + len(FOOTER_SIG)  # Must be at least 20 bytes
+
+        if size < MIN_SIZE:
+            return False
+
+        record_data = self.data[offset : offset + size]
+        
+        # The signature is not at a fixed position due to variable padding.
+        # We find the config block, then check if the footer exists at the end.
+        config_pos = record_data.find(CONFIG_SIG)
+        
+        # Check if config is present and footer is at the end of the block
+        if config_pos != -1 and record_data.endswith(FOOTER_SIG):
+            
+            payload_start = config_pos + len(CONFIG_SIG)
+            payload_end = size - len(FOOTER_SIG)
+            
+            # Ensure boundaries are logical
+            if payload_start <= payload_end:
+                padding = record_data[:config_pos]
+                config = record_data[config_pos:payload_start]
+                payload = record_data[payload_start:payload_end]
+                footer = record_data[payload_end:]
+                
+                self.curator.seek(offset)
+                self.curator.claim(
+                    "GeometryManagerRecord",
+                    size,
+                    lambda d: GeometryManagerRecord(
+                        offset=offset,
+                        data=record_data,
+                        padding=padding,
+                        config=config,
+                        payload=payload,
+                        footer=footer
+                    )
+                )
+                return True
+        
+        return False
+
     def _claim_as_generic_or_property_value(self, offset, size):
         """Helper to claim a chunk as either a PropertyValue or a GenericRecord."""
         if size <= 0:
             return
 
+        # --- THE REFACTOR ---
+        # 1. Try to claim as the new, specific GeometryManagerRecord FIRST.
+        if self._check_and_claim_geometry_manager(offset, size):
+            return  # Success, we are done.
+
+        # --- The rest of the function remains the same ---
         record_data = self.data[offset : offset + size]
         property_value_info = self._check_property_value(record_data)
         
