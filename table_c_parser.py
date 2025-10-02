@@ -552,11 +552,13 @@ class HypothesisParser:
             if i + 1 < len(valid_offsets):
                 end_offset = valid_offsets[i + 1]
             else:
-                # Last record: check if timestamp is after this offset
-                if timestamp_offset and timestamp_offset > start_offset:
-                    end_offset = timestamp_offset
-                else:
-                    end_offset = len(self.data)
+                # Last record
+                end_offset = len(self.data)
+            
+            # Check if timestamp falls within this record's range
+            # If so, limit the record to end before the timestamp
+            if timestamp_offset and start_offset < timestamp_offset < end_offset:
+                end_offset = timestamp_offset
             
             record_size = end_offset - start_offset
             if record_size <= 0:
