@@ -65,7 +65,7 @@ class Table107Parser:
         """Converts a raw byte value into a string table index."""
         if value < 1 or (value - 1) % 2 != 0:
             return None
-        return ((value - 1) // 2) + 46
+        return ((value - 1) // 2) + 64
 
     # --- Parser Functions for `claim()` ---
     # These functions take raw bytes and return the rich data object.

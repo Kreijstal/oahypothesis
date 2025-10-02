@@ -9,6 +9,7 @@ from table_b_parser import TableBParser
 from table_1d_parser import Table1dParser
 from table_133_parser import Table133Parser
 from table_1_parser import Table1Parser
+from table_107_parser import Table107Parser
 from oaparser import render_regions_to_string
 
 # Helper function to format data into a hex view similar to `xxd`
@@ -344,6 +345,59 @@ def diff_oa_tables(file_old_path, file_new_path):
                                 print(f"      {line}")
                             if len(diff_lines) > 20:
                                 print(f"      ... ({len(diff_lines) - 20} more lines)")
+            
+            print("\n")
+            continue # Skip the generic hex diff for this table
+
+        # --- SPECIALIZED DIFF FOR TABLE 0x107 ---
+        if table_id == 0x107:
+            print("  --- Structured Diff for Table 0x107 (Object Edit Metadata) ---")
+            
+            # Get string table for string resolution
+            string_table_old = oa_old.tables.get(0xa, {}).get('data')
+            string_table_new = oa_new.tables.get(0xa, {}).get('data')
+            
+            # Parse string tables into lists
+            def parse_strings(data):
+                if not data:
+                    return []
+                strings = []
+                pos = 0
+                while pos < len(data):
+                    end = data.find(b'\x00', pos)
+                    if end == -1:
+                        break
+                    strings.append(data[pos:end].decode('utf-8', errors='replace'))
+                    pos = end + 1
+                return strings
+            
+            strings_old = parse_strings(string_table_old)
+            strings_new = parse_strings(string_table_new)
+            
+            parser_old = Table107Parser(data_old, strings_old)
+            parser_new = Table107Parser(data_new, strings_new)
+            
+            from oaparser.binary_curator import ClaimedRegion
+            regions_old = parser_old.parse()
+            regions_new = parser_new.parse()
+            
+            # Extract claimed regions and compare
+            claimed_old = [(r.name, r.parsed_value) for r in regions_old if isinstance(r, ClaimedRegion)]
+            claimed_new = [(r.name, r.parsed_value) for r in regions_new if isinstance(r, ClaimedRegion)]
+            
+            changes_found = False
+            for (name_old, val_old), (name_new, val_new) in zip(claimed_old, claimed_new):
+                if name_old != name_new:
+                    print(f"  [!] Region name mismatch: '{name_old}' vs '{name_new}'")
+                    changes_found = True
+                elif str(val_old) != str(val_new):
+                    print(f"  [~] {name_old}:")
+                    print(f"      OLD: {val_old}")
+                    print(f"      NEW: {val_new}")
+                    changes_found = True
+            
+            if not changes_found:
+                print("  NOTE: No changes in claimed regions.")
             
             print("\n")
             continue # Skip the generic hex diff for this table

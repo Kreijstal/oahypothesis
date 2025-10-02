@@ -70,7 +70,7 @@ if __name__ == '__main__':
         print("Usage: python3 parser.py [--hexdump | --intarray] <oa_file>")
         print("\n  Decodes Tables 0xa, 0xb, 0x1d, 0xc, 0x107, and 0x133 by default.")
         print("  Table 0xc now resolves string references from Table 0xa.")
-        print("  Table 0x107 now resolves name pointers using the formula: index = (value - 1) // 2 + 46")
+        print("  Table 0x107 now resolves name pointers using the formula: index = (value - 1) // 2 + 64")
         print("  Use flags to dump all OTHER tables in a raw format.")
         sys.exit(1)
 
