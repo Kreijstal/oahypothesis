@@ -9,8 +9,10 @@ This table contains:
 """
 
 import struct
+import datetime
 from dataclasses import dataclass
 from typing import List
+from oaparser import BinaryCurator
 
 @dataclass
 class Table1Parser:
@@ -22,102 +24,108 @@ class Table1Parser:
         if len(self.data) < 128:
             return f"Table 0x1 (Global Metadata): {len(self.data)} bytes (too small to parse)"
         
-        lines = []
-        lines.append(f"Table 0x1 (Global Metadata): {len(self.data)} bytes")
-        lines.append("="*80)
+        curator = BinaryCurator(self.data)
         
-        # Parse header section with version strings
-        offset = 0
+        # Claim the 6-byte header
+        curator.claim("Header bytes", 6, lambda d: ' '.join(f'{b:02x}' for b in d))
         
-        # First 6 bytes appear to be padding or flags
-        header_bytes = self.data[0:6]
-        lines.append(f"\nHeader bytes: {' '.join(f'{b:02x}' for b in header_bytes)}")
-        offset = 6
-        
-        # Extract null-terminated strings
-        strings = []
-        for i in range(3):  # Expect 3 version strings
-            string_start = offset
+        # Extract and claim version strings (expecting 3)
+        for i in range(3):
+            if curator.cursor >= len(self.data):
+                break
+                
+            string_start = curator.cursor
             string_end = self.data.find(b'\x00', string_start)
             if string_end == -1:
                 break
             
-            string_data = self.data[string_start:string_end]
-            try:
-                string_val = string_data.decode('utf-8', errors='replace')
-                strings.append(string_val)
-                lines.append(f"\nVersion String {i+1}: \"{string_val}\"")
-            except:
-                pass
+            string_len = string_end - string_start + 1  # Include null terminator
             
-            # Move to next aligned position (strings seem to be padded to 16-byte boundaries)
-            offset = ((string_end + 16) // 16) * 16
+            def make_string_parser(data):
+                try:
+                    return f'"{data.rstrip(b"\\x00").decode("utf-8", errors="replace")}"'
+                except:
+                    return "[DECODE ERROR]"
+            
+            curator.claim(f"Version String {i+1}", string_len, make_string_parser)
+            
+            # Strings are padded to 16-byte boundaries
+            next_aligned = ((string_end + 16) // 16) * 16
+            padding_needed = next_aligned - curator.cursor
+            if padding_needed > 0 and curator.cursor < len(self.data):
+                curator.claim(f"Padding after String {i+1}", padding_needed, 
+                            lambda d: f"{len(d)} bytes")
         
-        # After strings, there are some important fields
+        # Jump to known locations for counters/timestamps
         if len(self.data) >= 0x70:
-            # Counters/flags at offset 0x68
-            counter1 = struct.unpack_from('<I', self.data, 0x68)[0]
-            counter2 = struct.unpack_from('<I', self.data, 0x6c)[0]
-            lines.append(f"\nCounter 1 (offset 0x68): {counter1} (0x{counter1:x})")
-            lines.append(f"Counter 2 (offset 0x6c): {counter2} (0x{counter2:x})")
+            # Claim any gap before counters
+            if curator.cursor < 0x68:
+                gap_size = 0x68 - curator.cursor
+                curator.seek(curator.cursor)
+                curator.claim("Gap before counters", gap_size, lambda d: f"{len(d)} bytes")
+            
+            # Claim the two counters at 0x68 and 0x6c
+            curator.seek(0x68)
+            curator.claim("Counter 1", 4, lambda d: f"{struct.unpack('<I', d)[0]} (0x{struct.unpack('<I', d)[0]:x})")
+            curator.claim("Counter 2", 4, lambda d: f"{struct.unpack('<I', d)[0]} (0x{struct.unpack('<I', d)[0]:x})")
         
         if len(self.data) >= 0x80:
-            # Timestamps at offset 0x70 and 0x78
-            ts1 = struct.unpack_from('<Q', self.data, 0x70)[0]
-            ts2 = struct.unpack_from('<Q', self.data, 0x78)[0]
+            # Claim the two timestamps at 0x70 and 0x78
+            curator.seek(0x70)
             
-            # Extract 32-bit timestamp (lower 32 bits)
-            ts1_32 = ts1 & 0xFFFFFFFF
-            ts2_32 = ts2 & 0xFFFFFFFF
+            def timestamp_parser(data):
+                ts = struct.unpack('<Q', data)[0]
+                ts_32 = ts & 0xFFFFFFFF
+                result = f"{ts_32} (0x{ts_32:x})"
+                if ts_32 > 0:
+                    try:
+                        dt = datetime.datetime.fromtimestamp(ts_32, datetime.timezone.utc)
+                        result += f" → {dt.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                    except:
+                        pass
+                return result
             
-            lines.append(f"\nTimestamp 1 (offset 0x70): {ts1_32} (0x{ts1_32:x})")
-            lines.append(f"Timestamp 2 (offset 0x78): {ts2_32} (0x{ts2_32:x})")
-            
-            # Try to interpret as Unix timestamp (only if non-zero)
-            if ts1_32 > 0 or ts2_32 > 0:
-                try:
-                    import datetime
-                    if ts1_32 > 0:
-                        dt1 = datetime.datetime.fromtimestamp(ts1_32, datetime.timezone.utc)
-                        lines.append(f"  TS1 → {dt1.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-                    if ts2_32 > 0:
-                        dt2 = datetime.datetime.fromtimestamp(ts2_32, datetime.timezone.utc)
-                        lines.append(f"  TS2 → {dt2.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-                except:
-                    pass
+            curator.claim("Timestamp 1", 8, timestamp_parser)
+            curator.claim("Timestamp 2", 8, timestamp_parser)
         
-        # Parse the array section (starts around offset 0x80)
+        # Claim the array section starting at 0x80
         array_start = 0x80
         if len(self.data) > array_start:
-            lines.append(f"\n\nArray Data (starting at offset 0x{array_start:x}):")
-            lines.append("-"*80)
+            curator.seek(array_start)
+            remaining = len(self.data) - array_start
+            num_ints = remaining // 4
             
-            # Parse as 32-bit integers
+            # Claim each integer in the array
+            for i in range(num_ints):
+                curator.claim(
+                    f"Array[{i}]",
+                    4,
+                    lambda d, idx=i: f"{struct.unpack('<I', d)[0]} (0x{struct.unpack('<I', d)[0]:x})"
+                )
+        
+        # Generate report
+        lines = [f"Table 0x1 (Global Metadata): {len(self.data)} bytes"]
+        lines.append("="*80)
+        lines.append("")
+        lines.append(curator.report())
+        
+        # Add summary statistics
+        if len(self.data) > array_start:
             num_ints = (len(self.data) - array_start) // 4
-            lines.append(f"Contains {num_ints} 32-bit integers")
-            
-            # Show first 20 values
-            lines.append("\nFirst 20 values:")
-            for i in range(min(20, num_ints)):
-                offset_pos = array_start + i * 4
-                val = struct.unpack_from('<I', self.data, offset_pos)[0]
-                lines.append(f"  [{i:03d}] offset 0x{offset_pos:04x}: {val:6d} (0x{val:04x})")
-            
-            if num_ints > 20:
-                lines.append(f"  ... ({num_ints - 20} more values)")
-            
-            # Show some statistics
             all_vals = [struct.unpack_from('<I', self.data, array_start + i*4)[0] 
                        for i in range(num_ints)]
             non_zero = [v for v in all_vals if v != 0]
             
-            lines.append(f"\nArray Statistics:")
+            lines.append("")
+            lines.append("="*80)
+            lines.append(f"Array Statistics:")
+            lines.append(f"  Total integers: {num_ints}")
             lines.append(f"  Non-zero values: {len(non_zero)}/{num_ints}")
             if non_zero:
                 lines.append(f"  Min value: {min(non_zero)}")
                 lines.append(f"  Max value: {max(non_zero)}")
         
-        lines.append("\n" + "="*80)
+        lines.append("="*80)
         return "\n".join(lines)
 
 def parse_table_1(data: bytes) -> str:
