@@ -204,13 +204,21 @@ class HypothesisParser:
                     cursor += pad_size
                     continue
                     
-                gen_size = self._try_claim_generic(cursor)
+                # Try to identify and claim property values
+                # If we can't identify it, skip forward to continue parsing
+                # but DON'T claim it - leave as unclaimed data
+                gen_size = self._try_claim_property_value(cursor)
                 if gen_size > 0:
                     cursor += gen_size
                     continue
                 
+                # If we couldn't identify anything specific, skip a small amount
+                # to avoid infinite loop, but leave data unclaimed
                 if cursor == initial_cursor:
-                    break
+                    # Skip 4 bytes and continue looking for structures
+                    cursor += 4
+                    if cursor >= len(self.data):
+                        break
                     
         except Exception:
             pass
@@ -325,8 +333,9 @@ class HypothesisParser:
         
         return size
 
-    def _try_claim_generic(self, cursor) -> int:
-        """Try to claim a generic record at cursor position"""
+    def _try_claim_property_value(self, cursor) -> int:
+        """Try to identify and claim a property value record - ONLY if we can positively identify it"""
+        # Look ahead to find a reasonable boundary (separator or net update marker)
         end = cursor + 4
         while end < len(self.data):
             if end + 4 > len(self.data):
@@ -344,23 +353,22 @@ class HypothesisParser:
         
         # Check if this is a property value record
         property_value_id = self._check_property_value(record_data)
-        string_refs = self._find_string_refs_in_data(record_data)
         
-        self.curator.seek(cursor)
+        # ONLY claim if we can positively identify it as a property value
+        # Otherwise, leave it unclaimed for full hex dump visibility
         if property_value_id is not None:
+            string_refs = self._find_string_refs_in_data(record_data)
+            self.curator.seek(cursor)
             self.curator.claim(
                 "PropertyValue",
                 size,
-                lambda d: PropertyValueRecord(cursor, size, record_data, property_value_id, string_refs)
+                lambda d, p=cursor, s=size, rd=record_data, pid=property_value_id, sr=string_refs: 
+                    PropertyValueRecord(p, s, rd, pid, sr)
             )
-        else:
-            self.curator.claim(
-                "Generic",
-                size,
-                lambda d: GenericRecord(cursor, size, record_data, string_refs)
-            )
+            return size
         
-        return size
+        # Don't claim - leave as unclaimed for hex dump
+        return 0
 
     def _check_property_value(self, data: bytes) -> Optional[int]:
         """Check if data looks like a property value record"""
