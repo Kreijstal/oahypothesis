@@ -1,61 +1,120 @@
 # Fix Summary: oa_diff_hypothesis.py Verbosity Issue
 
 ## Problem
-The `oa_diff_hypothesis.py` tool was significantly more verbose than `oa_diff.py` when comparing .oa files, producing 454 lines of output vs 269 lines for the same file comparison (sch_old.oa vs sch_new.oa).
+The `oa_diff_hypothesis.py` tool was significantly more verbose than `oa_diff.py` when comparing .oa files, producing 454 lines of output vs 269 lines for the same file comparison (sch_old.oa vs sch_new.oa) - a 68% increase that made the tool less useful.
 
-## Root Cause
-The issue was with the structured parsing of table 0xc (Netlist Data). The HypothesisParser attempts to parse the binary structure into logical records, but when values change (even slightly), the parser can interpret the record boundaries differently, causing:
+## Root Cause Analysis
 
-1. Misaligned record parsing between old and new versions
-2. Cascading structural differences throughout the table
-3. Verbose diffs showing entire record structures as changed when only small values actually differ
+### Initial Misunderstanding (Reverted)
+Initially identified the issue as structured parsing being too fragile and disabled it entirely. This was incorrect - the user wanted structured parsing enabled, not hidden.
 
-### Example
-When the resistor name changed from "popop" to "THISISNOWTHERESISTOR":
-- A property value ID in table 0xc changed from 0x3c (60) to 0x3f (63)
-- This small 1-byte change caused the structured parser to reinterpret record boundaries
-- The OLD file parsed a record at offset 0x06e8 (120 bytes)
-- The NEW file parsed records at offsets 0x06a0 (76 bytes) and 0x06ec (116 bytes)
-- Result: massive diff showing entire restructured records instead of just the changed byte
+### Actual Root Cause
+The real issue was **offset-based comparison**. The HypothesisParser correctly parsed records, but when values changed (e.g., 0x3c → 0x3f), record sizes changed, causing all subsequent records to shift positions. The line-by-line diff then showed:
+- Entire "old" records as removed (even though content was identical)
+- Entire "new" records as added (just at different offsets)
+- Massive cascading diffs for records that only moved
+
+Example:
+- OLD: Record at 0x06a0 (72 bytes) → Record at 0x06e8 (120 bytes)
+- NEW: Record at 0x06a0 (76 bytes) → Record at 0x06ec (116 bytes)
+- Result: Both records shown as completely different, even though only 4 bytes actually changed
 
 ## Solution
-Disabled the structured parsing for table 0xc in `oa_diff_hypothesis.py`. This table now uses the same hex-level diff as `oa_diff.py` and other tables without specialized parsers.
 
-The change was simple - commented out the specialized handling block for table 0xc (lines 192-214 in oa_diff_hypothesis.py).
+### Signature-Based Record Matching
+Implemented intelligent record matching that compares records by their **semantic content**, not their position:
+
+1. **Record Signatures**: Each record gets a signature based on its type and key fields:
+   - PropertyValueRecord: `(type, property_value_id)`
+   - TimestampRecord: `(type, 'timestamp')`
+   - NetUpdateRecord: `(type, first_16_bytes_of_payload)`
+   - GenericRecord: `(type, first_16_bytes_of_data)`
+
+2. **Content-Based Matching**: Records are matched OLD↔NEW by signature, not by index
+
+3. **Offset Normalization**: Absolute offsets removed from diff output (replaced with `[offset]`)
+
+4. **Concise Change Reporting**: Show only:
+   - `[~]` Modified records with detailed field-level diff
+   - `[+]` Added records
+   - `[-]` Removed records
+
+### String Table Resolution
+Added string table data to HypothesisParser calls, enabling string reference resolution:
+```python
+string_table_old = oa_old.tables.get(0xa, {}).get('data')
+parser_old = HypothesisParser(data_old, string_table_old)
+```
+
+This allows the parser to show resolved strings like `[="vdc"]`, `[="masterChangeCount"]` in the output.
 
 ## Results
-- Output reduced from 454 lines to 271 lines (comparable to oa_diff.py's 269 lines)
-- Structured diffs still work correctly for other tables:
-  - Table 0x1 (Global Metadata): Shows counter changes semantically
-  - Table 0xa (String Table): Shows string additions/changes
-  - Table 0xb (Property List): Shows property record changes
-  - Table 0x1d, 0x133: Specialized parsing maintained
-- Table 0xc now shows concise hex diffs highlighting actual byte changes
-- No loss of useful information - the hex diff is actually clearer for table 0xc
+
+### Quantitative Improvements
+- **Before fix**: 454 lines (68% more than oa_diff.py)
+- **After fix**: 312 lines (16% more than oa_diff.py)
+- **Reduction**: 142 lines eliminated (31% reduction)
+
+### Qualitative Improvements
+The 16% increase over oa_diff.py is justified by:
+1. **Record type identification**: PropertyValueRecord, NetUpdateRecord, TimestampRecord, etc.
+2. **Semantic field names**: "Property Value ID", "Timestamp", "Block Metadata"
+3. **String resolution**: Shows actual string values, not just offsets
+4. **Focused diffs**: Only modified/added/removed records, not spurious position changes
+
+### Example Output
+```
+[*] Found differences in Table ID 0xc
+  --- Structured Diff for Table 0xc (Netlist Data) ---
+  [+] New record: GenericRecord added
+  [~] Record 10: NetUpdateRecord modified
+      - Field @ 0x04: Block Metadata -> 60 (0x3c) (Implies Payload of 60 bytes)
+      + Field @ 0x04: Block Metadata -> 63 (0x3f) (Implies Payload of 63 bytes)
+  [~] Record 14: TimestampRecord modified
+      - Field @ 0x08: 32-bit Timestamp -> 1759219482 (2025-09-30 08:04:42 UTC)
+      + Field @ 0x08: 32-bit Timestamp -> 1759220368 (2025-09-30 08:19:28 UTC)
+  [-] Record 11: GenericRecord removed
+```
 
 ## Key Insights Discovered
 
-### String References in Table 0xc
-During investigation, we discovered that values in table 0xc are NOT direct string table offsets or indices. Instead:
-
-1. Table 0xa contains the string heap (e.g., "popop" at index 60, "THISISNOWTHERESISTOR" at index 61)
-2. Table 0xb contains property assignment records that reference strings
-3. Table 0xc contains property value IDs that reference records in table 0xb
-4. The relationship follows a pattern: `property_value_id ≈ (num_records_in_table_b) * 4 - 1`
+### String Reference Mechanism
+The investigation revealed the multi-level reference system:
+1. **Table 0xa**: String heap (stores actual strings like "popop", "THISISNOWTHERESISTOR")
+2. **Table 0xb**: Property assignment records (references strings)
+3. **Table 0xc**: Property value IDs (references records in table 0xb, NOT direct string indices)
 
 Example from sch_old.oa → sch_new.oa:
-- OLD: 15 records in table 0xb, property value ID 0x3c (60) in table 0xc
-- NEW: 16 records in table 0xb, property value ID 0x3f (63) in table 0xc
-- Formula: 16 * 4 - 1 = 63 ✓
+- String "popop" is at index 60 (0x3c) in table 0xa
+- String "THISISNOWTHERESISTOR" is at index 61 (0x3d) in table 0xa
+- But table 0xc changed from 0x3c to 0x3f (60 → 63)
+- The 0x3f is a **property value ID**, not a string index
+- It references a record in table 0xb, which then references the string
 
-This indirect referencing system explains why the structured parser was struggling - it's not just about parsing structure, but understanding the complex cross-table reference system.
+### Why Value Changes Track Well
+Value changes (like resistance 2K→3K) update property values within records. Since the record structure stays the same, signature-based matching correctly identifies them as modifications to the same record.
+
+### Why Component Renames Don't Show Up Clearly
+Component name changes create new property assignment records in table 0xb, which get new property value IDs. The table 0xc reference changes from the old ID to the new ID, but this appears as a simple integer change (0x3c→0x3f) without semantic information linking it to the string change.
+
+To show this more clearly, we would need to:
+1. Parse table 0xb to understand property value ID → string index mapping
+2. Cross-reference this in the table 0xc diff output
+3. Show: "Property Value ID changed from 0x3c (→string 60: 'popop') to 0x3f (→string 61: 'THISISNOWTHERESISTOR')"
+
+This is feasible but would require additional cross-table analysis.
+
+## Files Changed
+- `oa_diff_hypothesis.py`: Complete rewrite of table 0xc diff logic
+  - Added signature-based record matching
+  - Added string table resolution
+  - Added offset normalization
+  - Fixed Table133Parser type handling
 
 ## Testing
-Verified fix with multiple file pairs:
-- sch_old.oa → sch_new.oa: 271 lines (was 454)
-- sch_new.oa → sch2.oa: 41 lines
-- sch2.oa → sch3.oa: 314 lines
-- sch3.oa → sch4.oa: 279 lines
-- sch5.oa → sch6.oa: 514 lines
+Verified with multiple file pairs:
+- sch_old.oa → sch_new.oa: 312 lines (was 454)
+- sch13.oa → sch14.oa: Works correctly
+- All test files: Consistent behavior
 
-All outputs are now concise and comparable to oa_diff.py while preserving the benefit of structured parsing for supported tables.
+The tool now provides the best of both worlds: concise output comparable to oa_diff.py, with rich structured information about what actually changed.
