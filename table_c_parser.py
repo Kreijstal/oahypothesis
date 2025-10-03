@@ -214,30 +214,41 @@ class UnknownStruct60Byte:
     offset: int
     data: bytes
     padding: bytes
-    config_pattern: bytes
+    config_pattern: bytes  # Kept for backward compatibility, but now empty
     payload: bytes
     trailing_separator: bytes
-    OBSERVED_PATTERN = bytes.fromhex("0800000003000000")
+    OBSERVED_PATTERN = bytes.fromhex("0800000003000000")  # Legacy - no longer used for detection
     OBSERVED_SEPARATOR = bytes.fromhex("000000c802000000e8001a03")
+    
     def __str__(self):
-        lines = [f"Unknown 60-byte Structure (HYPOTHETICAL - appears only in sch5-8)"]
+        lines = [f"Separator-Based Structure (found in all .oa files)"]
         lines.append(f"  Total Size: {len(self.data)} bytes")
         lines.append(f"  - Padding: {len(self.padding)} bytes")
-        if self.config_pattern == self.OBSERVED_PATTERN:
-            lines.append(f"  - Pattern: 8 bytes (matches observed 08 00 00 00 03 00 00 00)")
-        else:
-            lines.append(f"  - Pattern: 8 bytes (DIFFERENT from observed)")
-            lines.extend(_generate_diff(self.OBSERVED_PATTERN, self.config_pattern))
+        
+        # Parse payload as integers if possible
         payload_ints_str = "empty"
         if self.payload:
-            payload_ints = [f"0x{v:x}" for v in struct.unpack(f'<{len(self.payload)//4}I', self.payload)]
-            payload_ints_str = f"{{{', '.join(payload_ints)}}}"
-        lines.append(f"  - Payload: {len(self.payload)} bytes, Values: {payload_ints_str}")
-        if self.trailing_separator == self.OBSERVED_SEPARATOR:
-            lines.append(f"  - Trailing: 12 bytes (ends with separator-like pattern)")
+            # Display as 4-byte integers
+            if len(self.payload) % 4 == 0:
+                payload_ints = [f"{v} (0x{v:x})" for v in struct.unpack(f'<{len(self.payload)//4}I', self.payload)]
+                payload_ints_str = ", ".join(payload_ints)
+            else:
+                # Show as hex bytes if not 4-byte aligned
+                payload_ints_str = " ".join(f"{b:02x}" for b in self.payload)
+        
+        lines.append(f"  - Payload: {len(self.payload)} bytes")
+        lines.append(f"    Values: [{payload_ints_str}]")
+        
+        # Check if trailing separator contains the expected pattern
+        if self.OBSERVED_SEPARATOR in self.trailing_separator:
+            lines.append(f"  - Trailing: {len(self.trailing_separator)} bytes (contains separator pattern)")
+            # Show if there's a 0xffffffff marker
+            if len(self.trailing_separator) >= 16 and self.trailing_separator.startswith(b'\xff\xff\xff\xff'):
+                lines.append(f"    Contains 0xffffffff marker before separator")
         else:
-            lines.append(f"  - Trailing: 12 bytes (DIFFERENT)")
-            lines.extend(_generate_diff(self.OBSERVED_SEPARATOR, self.trailing_separator))
+            lines.append(f"  - Trailing: {len(self.trailing_separator)} bytes (UNEXPECTED)")
+            lines.extend(_generate_diff(self.OBSERVED_SEPARATOR, self.trailing_separator[:len(self.OBSERVED_SEPARATOR)]))
+        
         return "\n".join(lines)
 
 @dataclass
@@ -467,65 +478,6 @@ class HypothesisParser:
                 # Exit the loop
                 break
 
-    def _check_and_claim_unknown_struct(self, offset: int, size: int) -> bool:
-        """
-        Checks if a data block matches the unknown 60-byte structure pattern.
-        WARNING: This structure only appears in sch5-8, disappears after.
-        Returns True if claimed, False otherwise.
-        """
-        # Observed pattern (UNSTABLE - disappears in sch9+)
-        PATTERN_SIG = UnknownStruct60Byte.OBSERVED_PATTERN
-        SEPARATOR_SIG = UnknownStruct60Byte.OBSERVED_SEPARATOR
-        MIN_SIZE = len(PATTERN_SIG) + len(SEPARATOR_SIG)  # Must be at least 20 bytes
-
-        if size < MIN_SIZE:
-            return False
-
-        record_data = self.data[offset : offset + size]
-        
-        # The pattern is not at a fixed position due to variable padding.
-        # We find the pattern block, then check if it ends with the separator.
-        pattern_pos = record_data.find(PATTERN_SIG)
-        
-        valid_record_starts = []
-        scan_cursor = 0
-        while scan_cursor < size:
-            found_pos = block_data.find(magic_number, scan_cursor)
-            if found_pos == -1: break
-            struct_start_in_block = found_pos - magic_number_offset_in_struct
-            if struct_start_in_block >= 0 and (struct_start_in_block + struct_size) <= size:
-                valid_record_starts.append(offset + struct_start_in_block)
-            scan_cursor = found_pos + 1
-        
-        last_claimed_end = offset
-        # Remove duplicates while preserving order
-        seen = set()
-        ordered_unique_record_starts = []
-        for record_start in valid_record_starts:
-            if record_start not in seen:
-                seen.add(record_start)
-                ordered_unique_record_starts.append(record_start)
-        for record_start in ordered_unique_record_starts:
-            if record_start < last_claimed_end: continue
-            pre_chunk_size = record_start - last_claimed_end
-            if pre_chunk_size > 0: self._claim_as_generic_or_property_value(last_claimed_end, pre_chunk_size)
-            
-            self.curator.seek(record_start)
-            struct_data = self.data[record_start : record_start + struct_size]
-            self.curator.claim("ComponentPropertyRecord", struct_size,
-                lambda d, p=record_start, rd=struct_data: ComponentPropertyRecord(
-                    offset=p, data=rd,
-                    structure_id=struct.unpack_from('<Q', rd, 0)[0],
-                    value_id=struct.unpack_from('<I', rd, 128)[0],
-                    config_matches=(rd[8:96] == ComponentPropertyRecord.EXPECTED_CONFIG),
-                    full_data_view=self.data,  # Pass the full table view
-                    filepath=self.filepath))
-            last_claimed_end = record_start + struct_size
-        
-        remaining_size = (offset + size) - last_claimed_end
-        if remaining_size > 0:
-            self._claim_as_generic_or_property_value(last_claimed_end, remaining_size)
-
     def _claim_as_generic_or_property_value(self, offset, size):
         if size <= 0: return
         if self._check_and_claim_unknown_struct(offset, size): return
@@ -539,18 +491,68 @@ class HypothesisParser:
             self.curator.claim("Generic", size, lambda d, p=offset, s=size, rd=record_data, sr=string_refs: GenericRecord(p, s, rd, sr))
 
     def _check_and_claim_unknown_struct(self, offset: int, size: int) -> bool:
-        PATTERN_SIG, SEPARATOR_SIG = UnknownStruct60Byte.OBSERVED_PATTERN, UnknownStruct60Byte.OBSERVED_SEPARATOR
-        if size < len(PATTERN_SIG) + len(SEPARATOR_SIG): return False
+        """
+        Checks if a data block contains the separator-based structure pattern.
+        This structure appears in all .oa files, not just sch5-8.
+        The detection is based on the separator pattern, not a fixed "signature".
+        Returns True if claimed, False otherwise.
+        """
+        SEPARATOR_SIG = UnknownStruct60Byte.OBSERVED_SEPARATOR
+        MIN_SIZE = 12 + len(SEPARATOR_SIG)  # Need at least some data + separator
+
+        if size < MIN_SIZE:
+            return False
+
         record_data = self.data[offset : offset + size]
-        pattern_pos = record_data.find(PATTERN_SIG)
-        if pattern_pos != -1 and record_data.endswith(SEPARATOR_SIG):
-            payload_start = pattern_pos + len(PATTERN_SIG)
-            payload_end = size - len(SEPARATOR_SIG)
-            if payload_start <= payload_end:
-                padding, pattern, payload, separator = record_data[:pattern_pos], record_data[pattern_pos:payload_start], record_data[payload_start:payload_end], record_data[payload_end:]
-                self.curator.claim("UnknownStruct60Byte", size, lambda d: UnknownStruct60Byte(offset=offset, data=record_data, padding=padding, config_pattern=pattern, payload=payload, trailing_separator=separator))
-                return True
-        return False
+        
+        # Search for the separator pattern - this is the reliable anchor
+        separator_pos = record_data.find(SEPARATOR_SIG)
+        if separator_pos == -1:
+            return False
+        
+        # The separator should be at the end of the record
+        expected_end = separator_pos + len(SEPARATOR_SIG)
+        if expected_end != len(record_data):
+            return False
+        
+        # Work backwards from separator to find the actual data
+        # Check if there's a 0xffffffff marker before the separator
+        has_separator_marker = False
+        data_end = separator_pos
+        
+        if separator_pos >= 4:
+            possible_marker = struct.unpack('<I', record_data[separator_pos-4:separator_pos])[0]
+            if possible_marker == 0xffffffff:
+                has_separator_marker = True
+                data_end = separator_pos - 4
+        
+        # Everything before data_end is the payload (including any padding at the start)
+        if data_end < 8:  # Need at least 8 bytes for meaningful data
+            return False
+        
+        # Find where the padding ends and actual data starts
+        # Scan from the beginning to find the first non-zero byte
+        payload_start = 0
+        while payload_start < data_end and record_data[payload_start] == 0:
+            payload_start += 1
+        
+        # The actual data values start where non-zeros begin
+        # Everything before is padding
+        padding = record_data[:payload_start]
+        payload = record_data[payload_start:data_end]
+        separator_with_marker = record_data[data_end:]
+        
+        # Claim the structure
+        self.curator.claim("UnknownStruct60Byte", size, 
+            lambda d: UnknownStruct60Byte(
+                offset=offset, 
+                data=record_data, 
+                padding=padding, 
+                config_pattern=b'',  # No longer looking for a fixed pattern
+                payload=payload, 
+                trailing_separator=separator_with_marker
+            ))
+        return True
 
     def _check_property_value(self, data: bytes) -> Optional[dict]:
         if len(data) < 32: return None
