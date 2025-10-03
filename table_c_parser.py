@@ -533,9 +533,14 @@ class HypothesisParser:
             pos = end + 1
 
     def _lookup_string(self, offset):
-        for str_offset, string in self.strings:
-            if str_offset == offset or str_offset == offset - 1: return string
-        return None
+        return next(
+            (
+                string
+                for str_offset, string in self.strings
+                if str_offset in [offset, offset - 1]
+            ),
+            None,
+        )
 
     def _parse_legacy_fallback(self, header_end: int, timestamp_offset: Optional[int] = None, timestamp_val: Optional[int] = None) -> List[Region]:
         return self.curator.get_regions() # Simplified for brevity
