@@ -12,11 +12,11 @@ This document describes a structure that was **MISUNDERSTOOD** in the original a
 - Mysteriously "disappears" in sch9+
 
 ### NEW (Correct) Understanding  
-- Structure appears in **sch5-12** (8 files, not just 4!)
+- Structure appears in **sch5-18** (14 files - all schematic files!)
 - Detected by **separator core** `00 00 00 c8 02 00 00 00` (last 4 bytes variable)
 - The `08 00 00 00` is **DATA**, not a signature - it changes to `03 00 00 00` in sch9+
 - The separator itself has variable bytes (changes `e8 00` → `7b 04` in sch12)
-- Structure doesn't disappear until sch13, it was just **not being detected** correctly
+- Structure exists in ALL schematic files from sch5 onwards!
 
 ## Structure Layout
 
@@ -37,14 +37,16 @@ The payload contains integer values that change across files:
 
 | File    | Payload Values     | Separator Variant | Notes                          |
 |---------|--------------------|-------------------|--------------------------------|
-| sch5    | [8, 3, 0]          | e8 00 1a 03      | Has 0xffffffff marker          |
-| sch6    | [8, 3, 1, 2]       | ?                | No marker, 56 bytes total      |
-| sch7    | [8, 3, 1, 2]       | ?                | No marker, 60 bytes total      |
-| sch8    | [8, 3, 1, 2]       | ?                | No marker, 60 bytes total      |
-| sch9    | [3, 3, 0]          | e8 00 1a 03      | Has 0xffffffff marker          |
-| sch10   | [3, 3, 0]          | e8 00 1a 03      | Has 0xffffffff marker          |
-| sch11   | [8, 4, 0]          | e8 00 1a 03      | Has 0xffffffff marker          |
+| sch5    | [8, 3, 0]          | e8 00 1a 03      | First appearance               |
+| sch6    | [8, 3, 1, 2]       | e8 00 1a 03      | 4 values instead of 3          |
+| sch7    | [8, 3, 1, 2]       | e8 00 1a 03      | Same as sch6                   |
+| sch8    | [8, 3, 1, 2]       | e8 00 1a 03      | Same as sch6-7                 |
+| sch9    | [3, 3, 0]          | e8 00 1a 03      | First value changes to 3       |
+| sch10   | [3, 3, 0]          | e8 00 1a 03      | Same as sch9                   |
+| sch11   | [8, 4, 0]          | e8 00 1a 03      | Second value changes to 4      |
 | sch12   | [8, 4, 0]          | 7b 04 1a 03      | Separator variant changes!     |
+| sch13   | [8, 5, 0]          | 7b 04 1a 03      | Second value changes to 5      |
+| sch14-18| [8, 5, 0]          | 7b 04 1a 03      | Stable through sch18           |
 
 ## Key Insights
 
@@ -85,7 +87,7 @@ The correct way to detect this structure:
 
 ## Files With/Without Structure
 
-### Files WITH Structure (8 total)
+### Files WITH Structure (14 total!)
 - ✓ sch5.oa
 - ✓ sch6.oa
 - ✓ sch7.oa
@@ -94,9 +96,14 @@ The correct way to detect this structure:
 - ✓ sch10.oa
 - ✓ sch11.oa
 - ✓ sch12.oa
+- ✓ sch13.oa
+- ✓ sch14.oa
+- ✓ sch15.oa
+- ✓ sch16.oa
+- ✓ sch17.oa
+- ✓ sch18.oa
 
-### Files WITHOUT Structure (11 total)
-- sch13.oa, sch14.oa, sch15.oa, sch16.oa, sch17.oa, sch18.oa
+### Files WITHOUT Structure (5 total)
 - sch_old.oa, sch_new.oa, sch2.oa, sch3.oa, sch4.oa
 
 ## What This Structure Might Be

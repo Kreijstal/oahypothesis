@@ -497,7 +497,7 @@ class HypothesisParser:
     def _check_and_claim_unknown_struct(self, offset: int, size: int) -> bool:
         """
         Checks if a data block contains the separator-based structure pattern.
-        This structure appears in many .oa files (sch5-12+).
+        This structure appears in many .oa files (sch5-18).
         The detection is based on the stable separator core, not a fixed "signature".
         Returns True if claimed, False otherwise.
         """
@@ -521,9 +521,12 @@ class HypothesisParser:
         if separator_pos + len(SEPARATOR_CORE) + 4 > len(record_data):
             return False
         
-        # The separator (core + 4 bytes) should be at the end of the record
+        # The separator (core + 4 bytes) should be near the end of the record
+        # Allow up to 8 bytes after the separator (for flexibility)
         separator_end = separator_pos + len(SEPARATOR_CORE) + 4
-        if separator_end != len(record_data):
+        bytes_after_separator = len(record_data) - separator_end
+        if bytes_after_separator > 8:
+            # Too much data after separator, probably not our structure
             return False
         
         # Work backwards from separator to find the actual data
@@ -551,13 +554,16 @@ class HypothesisParser:
         # Everything before is padding
         padding = record_data[:payload_start]
         payload = record_data[payload_start:data_end]
-        separator_with_marker = record_data[data_end:]
+        separator_with_marker = record_data[data_end:separator_end]
         
-        # Claim the structure
-        self.curator.claim("UnknownStruct60Byte", size, 
+        # Calculate the actual structure size (excluding any trailing bytes)
+        structure_size = separator_end - 0
+        
+        # Claim only the structure part, not the extra bytes
+        self.curator.claim("UnknownStruct60Byte", structure_size, 
             lambda d: UnknownStruct60Byte(
                 offset=offset, 
-                data=record_data, 
+                data=record_data[:structure_size],  # Only the structure part
                 padding=padding, 
                 config_pattern=b'',  # No longer looking for a fixed pattern
                 payload=payload, 

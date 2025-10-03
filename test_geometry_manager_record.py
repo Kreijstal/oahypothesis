@@ -15,20 +15,23 @@ from oaparser.binary_curator import ClaimedRegion
 
 
 def test_unknown_struct_detection():
-    """Test that the separator-based structure is detected in files where it exists (sch5-12)."""
+    """Test that the separator-based structure is detected in files where it exists (sch5-18)."""
     print("="*70)
     print("TEST: Separator-Based Structure Detection and Parsing")
-    print("This structure appears in sch5-12, detected by separator core pattern")
+    print("This structure appears in sch5-18, detected by separator core pattern")
     print("="*70)
     
     # Test files that are known to contain the structure
-    test_files = ['sch5.oa', 'sch6.oa', 'sch9.oa', 'sch11.oa', 'sch12.oa']
+    test_files = ['sch5.oa', 'sch6.oa', 'sch9.oa', 'sch11.oa', 'sch12.oa', 'sch13.oa', 'sch15.oa', 'sch18.oa']
     expected_values = {
         'sch5.oa': [8, 3, 0],
         'sch6.oa': [8, 3, 1, 2],
         'sch9.oa': [3, 3, 0],
         'sch11.oa': [8, 4, 0],
         'sch12.oa': [8, 4, 0],
+        'sch13.oa': [8, 5, 0],
+        'sch15.oa': [8, 5, 0],
+        'sch18.oa': [8, 5, 0],
     }
     
     all_passed = True
@@ -117,13 +120,13 @@ def test_unknown_struct_detection():
 
 
 def test_structure_absence_in_later_files():
-    """Test that the structure is absent in sch13+ as expected."""
+    """Test that the structure is not present in earlier files."""
     print("\n" + "="*70)
-    print("TEST: Structure Absence (should NOT appear in sch13+)")
+    print("TEST: Structure Absence (should NOT appear before sch5)")
     print("="*70)
     
     # Test files where structure should NOT appear
-    test_files = ['sch13.oa', 'sch14.oa', 'sch15.oa']
+    test_files = ['sch2.oa', 'sch3.oa', 'sch4.oa']
     
     all_passed = True
     for test_file in test_files:
@@ -200,7 +203,7 @@ if __name__ == '__main__':
     
     if test1_pass and test2_pass:
         print("\nALL TESTS PASSED ✓")
-        print("\nNOTE: This structure appears in sch5-12 and is detected by")
+        print("\nNOTE: This structure appears in sch5-18 and is detected by")
         print("searching for the stable separator core pattern. The payload values change")
         print("over time, and the separator has variable bytes, showing it's a dynamic structure.")
         exit(0)
