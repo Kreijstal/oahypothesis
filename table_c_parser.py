@@ -343,7 +343,11 @@ class HypothesisParser:
                             timestamp_offset, timestamp_val = pos, val
                         except (ValueError, OSError): pass
             return self._parse_pointer_driven(header, header_end, timestamp_offset, timestamp_val)
-        except Exception: pass
+        except ValueError:
+            # Re-raise ValueError (including overlap detection errors) to caller
+            raise
+        except Exception: 
+            pass
         return self.curator.get_regions()
 
     def _parse_header_with_curator(self) -> int:
