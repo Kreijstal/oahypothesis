@@ -509,7 +509,20 @@ class HypothesisParser:
         record_type, marker, _, _, _, _, _, val_at_index_7 = struct.unpack_from('<IIIIIIII', data, 0)
         if record_type == 19 and marker == 0xc8000000 and 20 < val_at_index_7 < 200:
             unclaimed_bytes = data[32:] if len(data) > 32 else b''
-            return {'property_value_id': val_at_index_7, 'record_type': record_type, 'marker': marker, 'unclaimed_payload': NestedUnclaimedData(label="UNCLAIMED PAYLOAD", data=unclaimed_bytes, description=f"Unknown data within PropertyValueRecord (after first 32 bytes)") if unclaimed_bytes else None}
+            return {
+                'property_value_id': val_at_index_7,
+                'record_type': record_type,
+                'marker': marker,
+                'unclaimed_payload': (
+                    NestedUnclaimedData(
+                        label="UNCLAIMED PAYLOAD",
+                        data=unclaimed_bytes,
+                        description="Unknown data within PropertyValueRecord (after first 32 bytes)",
+                    )
+                    if unclaimed_bytes
+                    else None
+                ),
+            }
         return None
 
     def _find_string_refs_in_data(self, data: bytes) -> List[tuple]:
