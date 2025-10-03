@@ -343,8 +343,9 @@ class HypothesisParser:
                             timestamp_offset, timestamp_val = pos, val
                         except (ValueError, OSError): pass
             return self._parse_pointer_driven(header, header_end, timestamp_offset, timestamp_val)
-        except Exception: pass
-        return self.curator.get_regions()
+        except ValueError:
+            # Re-raise ValueError (including overlap detection errors) to caller
+            raise
 
     def _parse_header_with_curator(self) -> int:
         if len(self.data) < 16: return 0
@@ -366,8 +367,20 @@ class HypothesisParser:
         for i in range(len(valid_offsets)):
             start_offset = valid_offsets[i]
             end_offset = valid_offsets[i + 1] if i + 1 < len(valid_offsets) else len(self.data)
-            if timestamp_offset and start_offset < timestamp_offset < end_offset: end_offset = timestamp_offset
-            if end_offset - start_offset > 0: self._claim_record_segment(start_offset, end_offset - start_offset)
+            
+            # If there's a timestamp, adjust the segment boundaries
+            if timestamp_offset:
+                # If this segment would cross the timestamp, end it at the timestamp
+                if start_offset < timestamp_offset < end_offset:
+                    end_offset = timestamp_offset
+                # Skip segments that start at or after where the timestamp starts
+                # because the timestamp and everything after will be handled separately
+                elif start_offset >= timestamp_offset:
+                    continue
+            
+            if end_offset - start_offset > 0: 
+                self._claim_record_segment(start_offset, end_offset - start_offset)
+        
         if timestamp_offset:
             last_before_ts = next((off for off in reversed(valid_offsets) if off < timestamp_offset), header_end)
             if timestamp_offset > last_before_ts:

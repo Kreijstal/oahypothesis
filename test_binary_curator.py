@@ -154,6 +154,71 @@ def test_out_of_order_claims():
         print("\n✗ FAILED: Regions not in correct order")
         return False
 
+def test_overlap_detection():
+    """Test that overlapping claims are detected and raise an error"""
+    print("\n" + "="*70)
+    print("TEST 6: Overlap Detection")
+    print("="*70)
+    
+    data = b"\x00" * 100
+    curator = BinaryCurator(data)
+    
+    # Claim a region at offset 10, size 20
+    curator.seek(10)
+    curator.claim("First region", 20, lambda b: f"{len(b)} bytes")
+    print("✓ Claimed first region at 10-29")
+    
+    # Try to claim an overlapping region (should fail)
+    try:
+        curator.seek(20)  # This is inside the first region
+        curator.claim("Overlapping region", 10, lambda b: f"{len(b)} bytes")
+        print("\n✗ FAILED: Overlap was not detected!")
+        return False
+    except ValueError as e:
+        if "Overlap detected" in str(e):
+            print(f"✓ Overlap correctly detected: {e}")
+        else:
+            print(f"\n✗ FAILED: Wrong error message: {e}")
+            return False
+    
+    # Try another overlap: new region starts before and extends into existing
+    try:
+        curator.seek(5)
+        curator.claim("Another overlapping region", 10, lambda b: f"{len(b)} bytes")
+        print("\n✗ FAILED: Overlap at start was not detected!")
+        return False
+    except ValueError as e:
+        if "Overlap detected" in str(e):
+            print(f"✓ Overlap at start correctly detected: {e}")
+        else:
+            print(f"\n✗ FAILED: Wrong error message: {e}")
+            return False
+    
+    # Try a region that completely contains existing region
+    try:
+        curator.seek(5)
+        curator.claim("Containing region", 30, lambda b: f"{len(b)} bytes")
+        print("\n✗ FAILED: Complete overlap was not detected!")
+        return False
+    except ValueError as e:
+        if "Overlap detected" in str(e):
+            print(f"✓ Complete overlap correctly detected: {e}")
+        else:
+            print(f"\n✗ FAILED: Wrong error message: {e}")
+            return False
+    
+    # Verify non-overlapping regions work
+    curator.seek(30)
+    curator.claim("Non-overlapping region", 10, lambda b: f"{len(b)} bytes")
+    print("✓ Non-overlapping region at 30-39 was accepted")
+    
+    curator.seek(0)
+    curator.claim("Region before first", 10, lambda b: f"{len(b)} bytes")
+    print("✓ Non-overlapping region at 0-9 was accepted")
+    
+    print("\n✓ PASSED: Overlap detection works correctly")
+    return True
+
 def main():
     print("\nBinaryCurator Test Suite")
     print("="*70)
@@ -164,6 +229,7 @@ def main():
     results.append(("No Claims (Lossless)", test_no_claims()))
     results.append(("Full Claim", test_full_claim()))
     results.append(("Out-of-Order Claims", test_out_of_order_claims()))
+    results.append(("Overlap Detection", test_overlap_detection()))
     
     print("\n" + "="*70)
     print("TEST SUMMARY")
