@@ -173,6 +173,19 @@ class BinaryCurator:
             raise ValueError(f"Cannot claim {size} bytes from offset {self.cursor}; not enough data.")
 
         start = self.cursor
+        end = start + size
+        
+        # Check for overlaps with existing regions
+        for existing in self.regions:
+            existing_end = existing.start + existing.size
+            # Check if new region overlaps with existing region
+            if not (end <= existing.start or start >= existing_end):
+                raise ValueError(
+                    f"Overlap detected! Attempting to claim '{name}' at offset {start}-{end-1} "
+                    f"(size {size}), but it overlaps with '{existing.name}' at offset "
+                    f"{existing.start}-{existing_end-1} (size {existing.size})."
+                )
+        
         raw_chunk = self.data[start : start + size]
         
         try:
