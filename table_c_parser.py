@@ -330,7 +330,9 @@ class HypothesisParser:
         return end_offset
 
     def _parse_pointer_driven(self, header: TableHeader, header_end: int, timestamp_offset: Optional[int], timestamp_val: Optional[int]) -> List[Region]:
-        candidate_offsets = sorted(set([o for o in header.offsets if header_end <= o < len(self.data)]))
+        candidate_offsets = sorted(
+            {o for o in header.offsets if header_end <= o < len(self.data)}
+        )
         if not candidate_offsets: return self._parse_legacy_fallback(header_end, timestamp_offset, timestamp_val)
         valid_offsets = [candidate_offsets[0]]
         for offset in candidate_offsets[1:]:
