@@ -1,6 +1,7 @@
 import struct
 import sys
 import difflib
+import io
 
 # Import the intelligent parsers for all tables
 from table_c_parser import HypothesisParser
@@ -411,8 +412,6 @@ def diff_oa_tables(file_old_path, file_new_path):
         differences = binary_diff(data_old, data_new)
         
         # Print differences with proper indentation
-        import io
-        import sys
         old_stdout = sys.stdout
         sys.stdout = io.StringIO()
         print_diff(differences, context='none')
