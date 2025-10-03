@@ -12,6 +12,9 @@ from table_1_parser import Table1Parser
 from table_107_parser import Table107Parser
 from oaparser import render_regions_to_string
 
+# Import binary diff functions from oa_diff2
+from oa_diff2 import binary_diff, print_diff, format_hex_ascii
+
 # Helper function to format data into a hex view similar to `xxd`
 def hex_dump(data, prefix=''):
     """Creates a formatted hex dump of a byte string."""
@@ -403,17 +406,24 @@ def diff_oa_tables(file_old_path, file_new_path):
             continue # Skip the generic hex diff for this table
 
         # --- GENERIC HEX DIFF FOR ALL OTHER TABLES ---
-        dump_old = hex_dump(data_old)
-        dump_new = hex_dump(data_new)
-
-        diff = difflib.unified_diff(dump_old, dump_new, fromfile='OLD', tofile='NEW', lineterm='')
-        print("  --- Hex Data Diff ---")
-        for line in diff:
-            # Skip the '---' and '+++' header lines from difflib for cleaner output
-            if line.startswith('---') or line.startswith('+++') or line.startswith('@@'):
-                continue
-            print(f"  {line}")
-        print("\n")
+        # Use the context=none algorithm from oa_diff2 for raw data dumps
+        print("  --- Binary Data Diff (context=none) ---")
+        differences = binary_diff(data_old, data_new)
+        
+        # Print differences with proper indentation
+        import io
+        import sys
+        old_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        print_diff(differences, context='none')
+        output = sys.stdout.getvalue()
+        sys.stdout = old_stdout
+        
+        # Add indentation to all lines
+        for line in output.split('\n'):
+            if line:
+                print(f"  {line}")
+        print()
 
 
 if __name__ == '__main__':
