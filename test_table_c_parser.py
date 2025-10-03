@@ -10,6 +10,7 @@ Tests:
 
 import sys
 import struct
+import traceback
 from table_c_parser import HypothesisParser, PropertyValueRecord, TimestampRecord
 from oaparser.binary_curator import ClaimedRegion
 
@@ -214,10 +215,11 @@ def test_component_property_record_detection():
                     parser = HypothesisParser(data)
                     regions = parser.parse()
 
-                    found_records = []
-                    for region in regions:
-                        if isinstance(region, ClaimedRegion) and isinstance(region.parsed_value, ComponentPropertyRecord):
-                            found_records.append(region.parsed_value)
+                    found_records = [
+                        region.parsed_value
+                        for region in regions
+                        if isinstance(region, ClaimedRegion) and isinstance(region.parsed_value, ComponentPropertyRecord)
+                    ]
 
                     found_ids = {rec.value_id for rec in found_records}
 
@@ -238,7 +240,6 @@ def test_component_property_record_detection():
                                     print(f"      - Record at offset 0x{rec.offset:x} (Value ID: {rec.value_id}) failed assertion.")
                         return False
     except Exception as e:
-        import traceback
         print(f"  ✗ {filename}: Error - {e}")
         traceback.print_exc()
         return False

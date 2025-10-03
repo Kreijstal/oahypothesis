@@ -1,7 +1,7 @@
 # table_c_parser.py - Refactored to use BinaryCurator
 import struct
 import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 from oaparser.binary_curator import BinaryCurator, Region, NestedUnclaimedData
 
@@ -289,9 +289,11 @@ def _generate_diff(expected: bytes, actual: bytes) -> List[str]:
         exp_chunk = expected[i:i+16]
         act_chunk = actual[i:i+16]
         if exp_chunk != act_chunk:
-            diff_lines.append(f"    {i:04x}:")
-            diff_lines.append(f"      - Expected: {' '.join(f'{b:02x}' for b in exp_chunk)}")
-            diff_lines.append(f"      - Actual:   {' '.join(f'{b:02x}' for b in act_chunk)}")
+            diff_lines.extend([
+                f"    {i:04x}:",
+                f"      - Expected: {' '.join(f'{b:02x}' for b in exp_chunk)}",
+                f"      - Actual:   {' '.join(f'{b:02x}' for b in act_chunk)}"
+            ])
     return diff_lines
 
 @dataclass
@@ -363,17 +365,21 @@ class ComponentPropertyRecord:
     offset: int
     data: bytes  # The raw 132 bytes
 
-    # Parsed fields
-    structure_id: int
-    config_and_pointers: bytes
-    padding: bytes
-    value_id: int
+    # Parsed fields (initialized in __post_init__)
+    structure_id: int = field(init=False)
+    config_and_pointers: bytes = field(init=False)
+    padding: bytes = field(init=False)
+    value_id: int = field(init=False)
 
-    # Assertion results
-    config_matches: bool
-    padding_matches: bool
+    # Assertion results (initialized in __post_init__)
+    config_matches: bool = field(init=False)
+    padding_matches: bool = field(init=False)
 
-    # Class-level constants for expected patterns
+    # Class-level constants
+    RECORD_SIZE = 132
+    SIGNATURE = b'\xa4\x00\x00\x00\x00\x00\x00\x00'
+    
+    # Expected patterns
     EXPECTED_CONFIG = bytes.fromhex(
         "06000000050000000100000000000000"
         "02000000000000000300000000000000"
@@ -386,10 +392,22 @@ class ComponentPropertyRecord:
         "04000000000000000400000000000000"
         "04000000000000000400000000000000"
     )
+    
+    def __post_init__(self):
+        """Parse the raw data after the object is created."""
+        if len(self.data) != 132:
+            raise ValueError(f"ComponentPropertyRecord expects 132 bytes, got {len(self.data)}")
+        
+        self.structure_id = struct.unpack_from('<Q', self.data, 0)[0]
+        self.config_and_pointers = self.data[8:96]
+        self.padding = self.data[96:128]
+        self.value_id = struct.unpack_from('<I', self.data, 128)[0]
+        self.config_matches = (self.config_and_pointers == self.EXPECTED_CONFIG)
+        self.padding_matches = (self.padding == self.EXPECTED_PADDING)
 
     def __str__(self):
         lines = [
-            f"Component Property Record (132 bytes)",
+            "Component Property Record (132 bytes)",
             f"  - Structure Type ID: 0x{self.structure_id:016x}",
             f"  - Value ID: {self.value_id} (0x{self.value_id:x})",
         ]
@@ -775,8 +793,8 @@ class HypothesisParser:
         if size <= 0:
             return
 
-        magic_number = b'\xa4\x00\x00\x00\x00\x00\x00\x00'
-        struct_size = 132
+        magic_number = ComponentPropertyRecord.SIGNATURE
+        struct_size = ComponentPropertyRecord.RECORD_SIZE
 
         block_data = self.data[offset : offset + size]
         cursor = 0
@@ -803,13 +821,7 @@ class HypothesisParser:
                     struct_size,
                     lambda d, p=struct_offset, rd=struct_data: ComponentPropertyRecord(
                         offset=p,
-                        data=rd,
-                        structure_id=struct.unpack_from('<Q', rd, 0)[0],
-                        config_and_pointers=rd[8:96],
-                        padding=rd[96:128],
-                        value_id=struct.unpack_from('<I', rd, 128)[0],
-                        config_matches=(rd[8:96] == ComponentPropertyRecord.EXPECTED_CONFIG),
-                        padding_matches=(rd[96:128] == ComponentPropertyRecord.EXPECTED_PADDING)
+                        data=rd
                     )
                 )
 
@@ -874,7 +886,7 @@ class HypothesisParser:
         
         return False
 
-    def _claim_as_generic_or_property_value(self, offset, size):
+    def _claim_as_generic_or_property_value(self, offset: int, size: int):
         """Helper to claim a chunk as either a PropertyValue or a GenericRecord."""
         if size <= 0:
             return
