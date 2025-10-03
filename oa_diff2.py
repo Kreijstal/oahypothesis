@@ -65,45 +65,38 @@ def is_oa_file(filepath: str) -> bool:
         pass
     return False
 
-def format_bytes(data: bytes, max_len: int = 16) -> str:
-    """Format bytes as hex string with ASCII representation."""
-    hex_str = ' '.join(f'{b:02x}' for b in data[:max_len])
+def format_hex_ascii(data: bytes, max_len: int = 32) -> str:
+    """Format bytes as hex with ASCII, like hexdump."""
+    s = ' '.join(f'{b:02x}' for b in data[:max_len])
     ascii_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in data[:max_len])
     if len(data) > max_len:
-        hex_str += '...'
+        s += '...'
         ascii_str += '...'
-    return f"{hex_str:48s} |{ascii_str}|"
+    return f"{s:<96} |{ascii_str}|"
 
-def format_compact(data: bytes, max_len: int = 32) -> str:
-    """Format bytes compactly."""
-    s = ' '.join(f'{b:02x}' for b in data[:max_len])
-    return s + '...' if len(data) > max_len else s
-
-def binary_diff(data1: bytes, data2: bytes, context: int = 8) -> List[Tuple[str, int, int, bytes, bytes]]:
+def binary_diff(data1: bytes, data2: bytes) -> List[Tuple[str, int, int, bytes, bytes]]:
     """
     Compare two binary streams and return differences.
-    
-    Args:
-        data1: First binary stream
-        data2: Second binary stream
-        context: Number of bytes of context to show around changes
     
     Returns:
         List of tuples: (operation, offset1, offset2, bytes1, bytes2)
         operation: 'equal', 'replace', 'delete', 'insert'
     """
-    # Use SequenceMatcher for efficient diff
     matcher = SequenceMatcher(None, data1, data2, autojunk=False)
-    
     differences = []
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         differences.append((tag, i1, i2, data1[i1:i2], data2[j1:j2]))
-    
     return differences
 
 def print_diff(differences: List[Tuple[str, int, int, bytes, bytes]], 
-               show_equal: bool = False, max_equal_bytes: int = 32):
-    """Print differences in a compact format."""
+               context: str = 'none', context_bytes: int = 16):
+    """
+    Print differences in a compact format.
+    
+    Args:
+        context: 'none', 'medium', or 'full'
+        context_bytes: Number of bytes to show around changes for 'medium' context
+    """
     total_changes = sum(1 for d in differences if d[0] != 'equal')
     print(f"Operations: {len(differences)}, Changes: {total_changes}")
     
@@ -112,21 +105,37 @@ def print_diff(differences: List[Tuple[str, int, int, bytes, bytes]],
         size2 = len(bytes2)
         
         if tag == 'equal':
-            if show_equal:
-                suffix = f" (first {max_equal_bytes})" if size1 > max_equal_bytes else ""
-                print(f"[{i1:08x}] = {size1}b{suffix}: equal bytes")
-                print(f"  = {format_compact(bytes1)}")
+            if context == 'full':
+                # Show all equal bytes in full context mode
+                chunk_size = 32
+                for offset in range(0, size1, chunk_size):
+                    chunk = bytes1[offset:offset + chunk_size]
+                    print(f"[{i1+offset:08x}]   {format_hex_ascii(chunk)}")
+            elif context == 'medium':
+                # Show limited context around changes
+                if size1 <= context_bytes * 2:
+                    # Show all if small enough
+                    print(f"[{i1:08x}]   {format_hex_ascii(bytes1[:context_bytes])}")
+                else:
+                    # Show first and last context_bytes
+                    print(f"[{i1:08x}]   {format_hex_ascii(bytes1[:context_bytes])}")
+                    if size1 > context_bytes * 2:
+                        print(f"         ... ({size1 - context_bytes * 2} bytes omitted) ...")
+                    print(f"[{i2-context_bytes:08x}]   {format_hex_ascii(bytes1[-context_bytes:])}")
+        
         elif tag == 'replace':
             sz = f" [{size2-size1:+d}]" if size1 != size2 else ""
             print(f"[{i1:08x}] ~ {size1}->{size2}b{sz}: replaced {size1} bytes")
-            print(f"  - {format_compact(bytes1)}")
-            print(f"  + {format_compact(bytes2)}")
+            print(f"  - {format_hex_ascii(bytes1)}")
+            print(f"  + {format_hex_ascii(bytes2)}")
+        
         elif tag == 'delete':
             print(f"[{i1:08x}] - {size1}b: deleted {size1} bytes")
-            print(f"  - {format_compact(bytes1)}")
+            print(f"  - {format_hex_ascii(bytes1)}")
+        
         elif tag == 'insert':
             print(f"[{i1:08x}] + {size2}b: inserted {size2} bytes")
-            print(f"  + {format_compact(bytes2)}")
+            print(f"  + {format_hex_ascii(bytes2)}")
 
 def print_summary(differences: List[Tuple[str, int, int, bytes, bytes]]):
     """Print a compact summary of changes."""
@@ -149,7 +158,7 @@ def print_summary(differences: List[Tuple[str, int, int, bytes, bytes]]):
     print(f"Insert:  {stats['insert']} ops, {stats['bytes_inserted']} bytes")
     print(f"Net:     {stats['bytes_inserted'] - stats['bytes_deleted']:+d} bytes")
 
-def diff_oa_files(file1: str, file2: str, show_equal: bool = False):
+def diff_oa_files(file1: str, file2: str, context: str = 'none', context_bytes: int = 16):
     """Diff two .oa files table by table."""
     print(f"--- Table-aware diff: {file1} (OLD) vs {file2} (NEW) ---\n")
     
@@ -198,7 +207,7 @@ def diff_oa_files(file1: str, file2: str, show_equal: bool = False):
         
         # Run binary diff on table data
         differences = binary_diff(data_old, data_new)
-        print_diff(differences, show_equal=show_equal)
+        print_diff(differences, context=context, context_bytes=context_bytes)
         print_summary(differences)
         print()
     
@@ -206,26 +215,48 @@ def diff_oa_files(file1: str, file2: str, show_equal: bool = False):
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python binary_diff.py <file1> <file2> [--show-equal]")
+        print("Usage: python oa_diff2.py <file1> <file2> [options]")
+        print()
+        print("Options:")
+        print("  --context=none     No context (default, only show changes)")
+        print("  --context=medium   Show context around changes")
+        print("  --context=full     Show all bytes including unchanged")
+        print("  --context-bytes=N  Context size for medium mode (default: 16)")
         print()
         print("For .oa files: performs table-aware comparison")
         print("For other files: performs byte-level comparison")
         sys.exit(1)
     
     file1, file2 = sys.argv[1], sys.argv[2]
-    show_equal = '--show-equal' in sys.argv
+    
+    # Parse options
+    context = 'full'
+    context_bytes = 16
+    
+    for arg in sys.argv[3:]:
+        if arg.startswith('--context='):
+            context = arg.split('=')[1]
+            if context not in ['none', 'medium', 'full']:
+                print(f"Invalid context mode: {context}")
+                sys.exit(1)
+        elif arg.startswith('--context-bytes='):
+            try:
+                context_bytes = int(arg.split('=')[1])
+            except ValueError:
+                print(f"Invalid context-bytes value: {arg}")
+                sys.exit(1)
     
     try:
         # Check if both files are .oa files
         if is_oa_file(file1) and is_oa_file(file2):
-            diff_oa_files(file1, file2, show_equal)
+            diff_oa_files(file1, file2, context=context, context_bytes=context_bytes)
         else:
             # Standard binary diff
             data1 = read_binary_file(file1)
             data2 = read_binary_file(file2)
             print(f"{file1}: {len(data1)}b, {file2}: {len(data2)}b, diff: {len(data2)-len(data1):+d}b")
             differences = binary_diff(data1, data2)
-            print_diff(differences, show_equal=show_equal)
+            print_diff(differences, context=context, context_bytes=context_bytes)
             print_summary(differences)
     except FileNotFoundError as e:
         print(f"Error: {e}")
