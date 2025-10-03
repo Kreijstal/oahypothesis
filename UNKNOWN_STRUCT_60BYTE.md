@@ -1,113 +1,146 @@
-# UnknownStruct60Byte - HYPOTHETICAL STRUCTURE
+# Separator-Based Structure - CORRECTED UNDERSTANDING
 
-## ⚠️ WARNING: LIMITED UNDERSTANDING
+## ⚠️ IMPORTANT: Previous Understanding Was Wrong
 
-This document describes a **HYPOTHETICAL** structure that we do NOT fully understand. It should be treated with extreme caution.
+This document describes a structure that was **MISUNDERSTOOD** in the original analysis. The key insight: **what we thought was a "signature" is actually DATA**.
 
-## Critical Limitations
+## What Changed
 
-### 1. **Appears Only in sch5-8, Disappears After**
-The structure is detected in files sch5, sch6, sch7, and sch8, but **completely disappears** in sch9 and all subsequent files.
+### OLD (Wrong) Understanding
+- Structure appears only in sch5-8
+- Detected by looking for pattern `08 00 00 00 03 00 00 00`
+- Mysteriously "disappears" in sch9+
 
-This suggests:
-- It may be **transient metadata** created during certain operations
-- It is NOT a stable format feature
-- Our understanding is incomplete
+### NEW (Correct) Understanding  
+- Structure appears in **sch5-11** (7 files, not just 4)
+- Detected by looking for **separator pattern** `00 00 00 c8 02 00 00 00 e8 00 1a 03`
+- The `08 00 00 00` is **DATA**, not a signature - it changes to `03 00 00 00` in sch9+
+- Structure doesn't disappear, it was just **not being detected** because we looked for the wrong thing
 
-### 2. **"Footer" is Actually a Separator**
-What we initially thought was a stable "footer" pattern is actually a **separator record** (0xffffffff marker). This is NOT a structural boundary.
+## Structure Layout
 
-### 3. **"Config" Pattern is Unstable**
-The pattern `08 00 00 00 03 00 00 00` appears in sch5-8 but disappears in sch9+, confirming it's not a reliable identifier.
-
-## What We Actually Observed
-
-### Structure Layout (60 bytes in sch5-8)
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ UnknownStruct60Byte (HYPOTHETICAL)                         │
+│ Separator-Based Structure (appears in sch5-11)             │
 ├─────────────────────────────────────────────────────────────┤
-│ Padding:  Variable (~32 bytes, mostly zeros)               │
-│ Pattern:  08 00 00 00 03 00 00 00 (8 bytes) - UNSTABLE!    │
-│ Payload:  Variable (4-byte aligned)                        │
-│ Trailing: ff ff ff ff 00 00 00 c8 02 00 00 00 e8 00 1a 03 │
-│           (16 bytes - actually a SEPARATOR, not a footer!) │
+│ Padding:  Variable (28-32 bytes, mostly zeros)             │
+│ Payload:  Variable data values (12-16 bytes, 4-byte ints)  │
+│ Marker:   0xffffffff (4 bytes, optional - only some files) │
+│ Separator: 00 00 00 c8 02 00 00 00 e8 00 1a 03 (12 bytes)  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Appearance Timeline (from changes.txt)
-- **sch5**: First appearance (resistor resistance set to 2K)
-- **sch6**: Still present (resistor converted to capacitor)
-- **sch7**: Still present (new resistor added)
-- **sch8**: Last appearance (wire drawn)
-- **sch9**: GONE (R1 resistance changed to 2K)
+## Observed Payload Values
 
-### Why It Disappears
-After sch8, when connectivity changes happen (wire drawing), the structure disappears. This suggests it may be:
-- Temporary metadata during property setting operations
-- Replaced by a different structure after connectivity is established
-- Not a permanent part of the file format
+The payload contains integer values that change across files:
 
-## Implementation Details
+| File    | Payload Values     | Notes                          |
+|---------|--------------------|--------------------------------|
+| sch5    | [8, 3, 0]          | Has 0xffffffff marker          |
+| sch6    | [8, 3, 1, 2]       | No marker, 56 bytes total      |
+| sch7    | [8, 3, 1, 2]       | No marker, 60 bytes total      |
+| sch8    | [8, 3, 1, 2]       | No marker, 60 bytes total      |
+| sch9    | [3, 3, 0]          | Has 0xffffffff marker          |
+| sch10   | [3, 3, 0]          | Has 0xffffffff marker          |
+| sch11   | [8, 4, 0]          | Has 0xffffffff marker          |
 
-### Detection Logic
-The parser uses `_check_and_claim_unknown_struct()` to detect this pattern, but the detection is fragile:
+## Key Insights
 
-1. Searches for pattern `08 00 00 00 03 00 00 00`
-2. Checks if data ends with `00 00 00 c8 02 00 00 00 e8 00 1a 03`
-3. Both conditions MUST match (fails in sch9+)
+### 1. The "Signature" Was Actually Data
+The bytes `08 00 00 00 03 00 00 00` are **not** a signature for structure detection. They are **payload values**:
+- First int: 8 in sch5-8,11 but **changes to 3** in sch9-10
+- Second int: Always 3 (except sch11 where it's 4)
 
-### Why We Renamed It
-Originally called `GeometryManagerRecord` (based on a string reference `sch.ds.gm.1.4`), but:
-- The string reference is NOT in the structure itself
-- The structure's purpose is unknown
-- The name implied we understood it (we don't)
+### 2. The Reliable Anchor is the Separator
+The **only** reliable pattern is the separator: `00 00 00 c8 02 00 00 00 e8 00 1a 03`
 
-New name `UnknownStruct60Byte` is honest about our limited knowledge.
+This appears at the end of the structure in all files.
 
-## Test Coverage
+### 3. Variable Size
+The structure is **not** a fixed 60 bytes:
+- sch6: 56 bytes
+- Other files: 60 bytes
 
-### Files WITH Structure
+The difference is due to:
+- Variable padding at the start
+- Optional 0xffffffff marker before separator
+- Variable payload length
+
+## Detection Method
+
+The correct way to detect this structure:
+
+1. **Search for separator pattern** `00 00 00 c8 02 00 00 00 e8 00 1a 03`
+2. **Work backwards** from the separator
+3. Check for optional 0xffffffff marker (4 bytes before separator)
+4. Extract payload (non-zero values before marker/separator)
+5. Extract padding (zeros at the beginning)
+
+## Files With/Without Structure
+
+### Files WITH Structure (7 total)
 - ✓ sch5.oa
 - ✓ sch6.oa
 - ✓ sch7.oa
 - ✓ sch8.oa
+- ✓ sch9.oa
+- ✓ sch10.oa
+- ✓ sch11.oa
 
-### Files WITHOUT Structure
-- sch9.oa, sch10.oa, sch11.oa, sch12.oa, sch13.oa, sch14.oa, sch15.oa, sch16.oa, sch17.oa, sch18.oa
+### Files WITHOUT Structure (12 total)
+- sch12.oa, sch13.oa, sch14.oa, sch15.oa, sch16.oa, sch17.oa, sch18.oa
 - sch_old.oa, sch_new.oa, sch2.oa, sch3.oa, sch4.oa
+
+## What This Structure Might Be
+
+Based on the payload values changing over time, this appears to be:
+- **Dynamic metadata** that tracks some counters or state
+- Related to component operations (values change when components are added/modified)
+- Not a fixed configuration, but live data
+
+The first value changes from 8 to 3 between sch8 and sch9, suggesting it might track:
+- Number of components/connections
+- Operation counter
+- State machine value
+
+## Implementation Details
+
+### Parser Changes
+The parser (`table_c_parser.py`) now:
+1. Searches for the separator pattern (not a fixed "signature")
+2. Works backwards to extract payload
+3. Handles both with/without 0xffffffff marker
+4. Correctly identifies the structure in all 7 files
+
+### Class: UnknownStruct60Byte
+Despite the name (kept for backward compatibility), this now:
+- Stores variable-length payload (not fixed 60 bytes)
+- No longer checks for a "config_pattern" (it's empty)
+- Displays payload as integer values
+- Shows whether 0xffffffff marker is present
 
 ## Recommendations
 
-### DO NOT:
-- ❌ Assume this is a stable format feature
-- ❌ Use it for critical parsing decisions
-- ❌ Claim to understand its purpose
-- ❌ Build functionality that depends on it
-
 ### DO:
-- ✓ Treat it as a research curiosity
-- ✓ Document when it appears/disappears
-- ✓ Keep the parser flexible for when it's absent
-- ✓ Consider it might be removed in future refactoring
+- ✓ Use separator pattern for detection
+- ✓ Treat payload as dynamic data that changes
+- ✓ Understand this appears in sch5-11 (not just sch5-8)
+- ✓ Handle variable structure size
+
+### DO NOT:
+- ❌ Assume payload values are fixed
+- ❌ Look for "signature" patterns in payload
+- ❌ Expect fixed 60-byte size
+- ❌ Claim to understand what the values mean
 
 ## Conclusion
 
-This structure is **NOT WELL UNDERSTOOD**. It appears briefly in 4 files and then disappears. What we thought was a "footer" is actually a separator. What we thought was stable "config" data is actually transient.
+The original analysis was **fundamentally wrong** about how to detect this structure. By treating data values as signatures, we missed the structure in files sch9-11.
 
-The honest conclusion: **We don't know what this is.** It may be:
-- Transient metadata during certain operations
-- A format quirk that gets cleaned up later
-- Something we're completely misinterpreting
+The correct understanding:
+- **Separator pattern is the anchor** for detection
+- **Payload values are dynamic data** that change over time
+- **Structure appears in 7 files** (sch5-11), not 4
+- **Size is variable** (56-60 bytes), not fixed
 
-Until we understand it better, it should be treated as **hypothetical** and not relied upon for any critical functionality.
-
-## Further Investigation Needed
-
-To truly understand this structure, we would need to:
-1. Analyze the raw bytes in more detail across all files
-2. Understand why it disappears after sch8
-3. Determine if the "pattern" and "separator" are actually related
-4. Find documentation or reverse engineer the actual format
-
-Without this, the structure remains a mystery.
+This is a significant correction that changes our understanding of the .oa file format.
