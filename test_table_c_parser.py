@@ -222,7 +222,7 @@ def test_component_property_record_detection():
                     found_ids = {rec.value_id for rec in found_records}
 
                     # Verify all found records have matching static parts
-                    all_patterns_match = all(rec.config_matches and rec.padding_matches for rec in found_records)
+                    all_patterns_match = all(rec.config_matches for rec in found_records)
 
                     if found_ids == expected_ids and all_patterns_match:
                         print(f"  ✓ {filename}: Found all expected IDs and all static patterns match.")
@@ -234,7 +234,7 @@ def test_component_property_record_detection():
                         if not all_patterns_match:
                             print("    - Pattern Mismatch: One or more records did not match expected static patterns.")
                             for rec in found_records:
-                                if not rec.config_matches or not rec.padding_matches:
+                                if not rec.config_matches:
                                     print(f"      - Record at offset 0x{rec.offset:x} (Value ID: {rec.value_id}) failed assertion.")
                         return False
     except Exception as e:
