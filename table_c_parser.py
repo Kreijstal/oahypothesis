@@ -459,7 +459,14 @@ class HypothesisParser:
             scan_cursor = found_pos + 1
         
         last_claimed_end = offset
-        for record_start in sorted(list(set(valid_record_starts))):
+        # Remove duplicates while preserving order
+        seen = set()
+        ordered_unique_record_starts = []
+        for record_start in valid_record_starts:
+            if record_start not in seen:
+                seen.add(record_start)
+                ordered_unique_record_starts.append(record_start)
+        for record_start in ordered_unique_record_starts:
             if record_start < last_claimed_end: continue
             pre_chunk_size = record_start - last_claimed_end
             if pre_chunk_size > 0: self._claim_as_generic_or_property_value(last_claimed_end, pre_chunk_size)
