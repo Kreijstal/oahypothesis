@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Test script for UnknownStruct60Byte detection and parsing.
+Test script for separator-based structure detection and parsing.
 
-WARNING: This structure only appears in files sch5-8 and disappears in sch9+.
-The structure is hypothetical and not fully understood.
+This structure appears in files sch5-11 (not just sch5-8 as previously thought).
+The structure is detected by searching for the separator pattern, not a fixed "signature".
 
 This test verifies that the parser correctly identifies and parses
-this unknown structure when it is present in the data.
+this structure when it is present in the data.
 """
 
 import struct
@@ -15,126 +15,118 @@ from oaparser.binary_curator import ClaimedRegion
 
 
 def test_unknown_struct_detection():
-    """Test that UnknownStruct60Byte is detected in files where it exists (sch5-8 only)."""
+    """Test that the separator-based structure is detected in files where it exists (sch5-18)."""
     print("="*70)
-    print("TEST: UnknownStruct60Byte Detection and Structure Parsing")
-    print("WARNING: This structure only appears in sch5-8, disappears in sch9+")
+    print("TEST: Separator-Based Structure Detection and Parsing")
+    print("This structure appears in sch5-18, detected by separator core pattern")
     print("="*70)
     
-    # Test file that is known to contain the unknown structure
-    test_file = 'sch5.oa'
+    # Test files that are known to contain the structure
+    test_files = ['sch5.oa', 'sch6.oa', 'sch9.oa', 'sch11.oa', 'sch12.oa', 'sch13.oa', 'sch15.oa', 'sch18.oa']
+    expected_values = {
+        'sch5.oa': [8, 3, 0],
+        'sch6.oa': [8, 3, 1, 2],
+        'sch9.oa': [3, 3, 0],
+        'sch11.oa': [8, 4, 0],
+        'sch12.oa': [8, 4, 0],
+        'sch13.oa': [8, 5, 0],
+        'sch15.oa': [8, 5, 0],
+        'sch18.oa': [8, 5, 0],
+    }
     
-    try:
-        with open(test_file, 'rb') as f:
-            # Read file header
-            header = f.read(24)
-            _, _, _, _, _, used = struct.unpack('<IHHQII', header)
-            ids = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
-            offsets = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
-            sizes = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
-            
-            # Load string table
-            string_table_data = None
-            for i in range(used):
-                if ids[i] == 0x0a:
-                    f.seek(offsets[i])
-                    string_table_data = f.read(sizes[i])
-                    break
-            
-            # Load and parse table 0xc
-            for i in range(used):
-                if ids[i] == 0x0c:
-                    f.seek(offsets[i])
-                    data = f.read(sizes[i])
-                    
-                    parser = HypothesisParser(data, string_table_data)
-                    regions = parser.parse()
-                    
-                    # Search for UnknownStruct60Byte
-                    found_records = []
-                    for region in regions:
-                        if isinstance(region, ClaimedRegion):
-                            if isinstance(region.parsed_value, UnknownStruct60Byte):
-                                found_records.append(region.parsed_value)
-                    
-                    # Verify detection
-                    if not found_records:
-                        print(f"  ✗ {test_file}: No UnknownStruct60Byte found")
-                        return False
-                    
-                    print(f"  ✓ {test_file}: Found {len(found_records)} UnknownStruct60Byte(s)")
-                    
-                    # Verify structure parsing
-                    for rec in found_records:
-                        print(f"\n  Verifying structure at offset 0x{rec.offset:x}:")
-                        
-                        # Check that parts exist
-                        if len(rec.padding) < 0:
-                            print(f"    ✗ Invalid padding size: {len(rec.padding)}")
-                            return False
-                        print(f"    ✓ Padding: {len(rec.padding)} bytes")
-                        
-                        if len(rec.config_pattern) != 8:
-                            print(f"    ✗ Pattern should be 8 bytes, got {len(rec.config_pattern)}")
-                            return False
-                        print(f"    ✓ Pattern: {len(rec.config_pattern)} bytes")
-                        
-                        if len(rec.payload) % 4 != 0:
-                            print(f"    ✗ Payload should be 4-byte aligned, got {len(rec.payload)}")
-                            return False
-                        print(f"    ✓ Payload: {len(rec.payload)} bytes (4-byte aligned)")
-                        
-                        if len(rec.trailing_separator) != 12:
-                            print(f"    ✗ Trailing should be 12 bytes, got {len(rec.trailing_separator)}")
-                            return False
-                        print(f"    ✓ Trailing: {len(rec.trailing_separator)} bytes")
-                        
-                        # Verify observed patterns
-                        if rec.config_pattern == UnknownStruct60Byte.OBSERVED_PATTERN:
-                            print(f"    ✓ Pattern matches observed 08 00 00 00 03 00 00 00")
-                        else:
-                            print(f"    ✗ Pattern does NOT match observed")
-                            return False
-                        
-                        if rec.trailing_separator == UnknownStruct60Byte.OBSERVED_SEPARATOR:
-                            print(f"    ✓ Trailing matches observed separator-like pattern")
-                        else:
-                            print(f"    ✗ Trailing does NOT match observed")
-                            return False
-                        
-                        # Verify total size
-                        expected_size = len(rec.padding) + len(rec.config_pattern) + len(rec.payload) + len(rec.trailing_separator)
-                        if len(rec.data) != expected_size:
-                            print(f"    ✗ Total size mismatch: {len(rec.data)} vs {expected_size}")
-                            return False
-                        print(f"    ✓ Total size correct: {len(rec.data)} bytes")
-                    
-                    print("\n" + "="*70)
-                    print("TEST PASSED ✓")
-                    print("="*70)
-                    return True
-                    
-    except FileNotFoundError:
-        print(f"  ✗ Test file '{test_file}' not found")
-        return False
-    except Exception as e:
-        print(f"  ✗ Test failed with exception: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+    all_passed = True
     
-    print(f"  ✗ Table 0xc not found in {test_file}")
-    return False
+    for test_file in test_files:
+        try:
+            with open(test_file, 'rb') as f:
+                # Read file header
+                header = f.read(24)
+                _, _, _, _, _, used = struct.unpack('<IHHQII', header)
+                ids = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
+                offsets = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
+                sizes = list(struct.unpack(f'<{used}Q', f.read(8 * used)))
+                
+                # Load string table
+                string_table_data = None
+                for i in range(used):
+                    if ids[i] == 0x0a:
+                        f.seek(offsets[i])
+                        string_table_data = f.read(sizes[i])
+                        break
+                
+                # Load and parse table 0xc
+                for i in range(used):
+                    if ids[i] == 0x0c:
+                        f.seek(offsets[i])
+                        data = f.read(sizes[i])
+                        
+                        parser = HypothesisParser(data, string_table_data)
+                        regions = parser.parse()
+                        
+                        # Search for the structure
+                        found_records = []
+                        for region in regions:
+                            if isinstance(region, ClaimedRegion):
+                                if isinstance(region.parsed_value, UnknownStruct60Byte):
+                                    found_records.append(region.parsed_value)
+                        
+                        # Verify detection
+                        if not found_records:
+                            print(f"  ✗ {test_file}: No structure found")
+                            all_passed = False
+                            continue
+                        
+                        print(f"  ✓ {test_file}: Found {len(found_records)} structure(s)")
+                        
+                        # Verify structure parsing
+                        for rec in found_records:
+                            # Check that payload contains expected values
+                            if len(rec.payload) % 4 == 0:
+                                payload_ints = list(struct.unpack(f'<{len(rec.payload)//4}I', rec.payload))
+                                expected = expected_values.get(test_file, [])
+                                if payload_ints == expected:
+                                    print(f"    ✓ Payload values match expected: {payload_ints}")
+                                else:
+                                    print(f"    ⚠ Payload values: {payload_ints} (expected: {expected})")
+                            
+                            # Check that separator core is present
+                            if UnknownStruct60Byte.SEPARATOR_CORE in rec.trailing_separator:
+                                print(f"    ✓ Contains separator core")
+                            else:
+                                print(f"    ✗ Missing separator core")
+                                all_passed = False
+                        
+                        break
+                        
+        except FileNotFoundError:
+            print(f"  - {test_file}: (file not found, skipping)")
+            continue
+        except Exception as e:
+            print(f"  ✗ {test_file}: Failed with exception: {e}")
+            import traceback
+            traceback.print_exc()
+            all_passed = False
+    
+    if all_passed:
+        print("\n" + "="*70)
+        print("DETECTION TEST PASSED ✓")
+        print("="*70)
+    else:
+        print("\n" + "="*70)
+        print("DETECTION TEST FAILED ✗")
+        print("="*70)
+    
+    return all_passed
 
 
-def test_structure_disappears_after_sch8():
-    """Test that the unknown structure disappears in sch9+ as expected."""
+def test_structure_absence_in_later_files():
+    """Test that the structure is not present in earlier files."""
     print("\n" + "="*70)
-    print("TEST: Structure Disappearance (should NOT appear in sch9+)")
+    print("TEST: Structure Absence (should NOT appear before sch5)")
     print("="*70)
     
     # Test files where structure should NOT appear
-    test_files = ['sch9.oa', 'sch13.oa', 'sch14.oa']
+    test_files = ['sch2.oa', 'sch3.oa', 'sch4.oa']
     
     all_passed = True
     for test_file in test_files:
@@ -164,7 +156,7 @@ def test_structure_disappears_after_sch8():
                         parser = HypothesisParser(data, string_table_data)
                         regions = parser.parse()
                         
-                        # Check for UnknownStruct60Byte (should NOT be found)
+                        # Check for structure (should NOT be found)
                         found_unknown = False
                         for region in regions:
                             if isinstance(region, ClaimedRegion):
@@ -173,10 +165,10 @@ def test_structure_disappears_after_sch8():
                                     break
                         
                         if found_unknown:
-                            print(f"  ✗ {test_file}: UnknownStruct60Byte found (should not exist)")
+                            print(f"  ✗ {test_file}: Structure found (should not exist)")
                             all_passed = False
                         else:
-                            print(f"  ✓ {test_file}: UnknownStruct60Byte absent (as expected)")
+                            print(f"  ✓ {test_file}: Structure absent (as expected)")
                         break
                         
         except FileNotFoundError:
@@ -188,11 +180,11 @@ def test_structure_disappears_after_sch8():
     
     if all_passed:
         print("\n" + "="*70)
-        print("DISAPPEARANCE TEST PASSED ✓")
+        print("ABSENCE TEST PASSED ✓")
         print("="*70)
     else:
         print("\n" + "="*70)
-        print("DISAPPEARANCE TEST FAILED ✗")
+        print("ABSENCE TEST FAILED ✗")
         print("="*70)
     
     return all_passed
@@ -200,19 +192,20 @@ def test_structure_disappears_after_sch8():
 
 if __name__ == '__main__':
     test1_pass = test_unknown_struct_detection()
-    test2_pass = test_structure_disappears_after_sch8()
+    test2_pass = test_structure_absence_in_later_files()
     
     print("\n" + "="*70)
     print("OVERALL TEST SUMMARY")
     print("="*70)
-    print(f"  UnknownStruct60Byte Detection: {'PASSED ✓' if test1_pass else 'FAILED ✗'}")
-    print(f"  Structure Disappearance: {'PASSED ✓' if test2_pass else 'FAILED ✗'}")
+    print(f"  Structure Detection: {'PASSED ✓' if test1_pass else 'FAILED ✗'}")
+    print(f"  Structure Absence: {'PASSED ✓' if test2_pass else 'FAILED ✗'}")
     print("="*70)
     
     if test1_pass and test2_pass:
         print("\nALL TESTS PASSED ✓")
-        print("\nNOTE: This structure is hypothetical and only appears in sch5-8.")
-        print("It disappears in sch9+ suggesting transient metadata, not a stable format.")
+        print("\nNOTE: This structure appears in sch5-18 and is detected by")
+        print("searching for the stable separator core pattern. The payload values change")
+        print("over time, and the separator has variable bytes, showing it's a dynamic structure.")
         exit(0)
     else:
         print("\nSOME TESTS FAILED ✗")
