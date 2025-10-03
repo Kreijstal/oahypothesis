@@ -12,7 +12,9 @@ from binary_diff import (
     format_compact, 
     binary_diff, 
     print_diff,
-    print_summary
+    print_summary,
+    OaFile,
+    is_oa_file
 )
 
 def test_read_binary_file():
@@ -120,6 +122,31 @@ def test_print_summary():
     print_summary(differences)
     print("  ✓ print_summary works without crashing")
 
+def test_is_oa_file():
+    """Test .oa file detection."""
+    print("Testing is_oa_file...")
+    
+    # Test with .oa extension
+    assert is_oa_file('test.oa'), "Should detect .oa extension"
+    
+    # Test with non-.oa extension
+    assert not is_oa_file('test.bin'), "Should not detect .bin as .oa"
+    
+    print("  ✓ is_oa_file works correctly")
+
+def test_oa_file_parsing():
+    """Test OaFile parsing with real .oa files."""
+    print("Testing OaFile parsing...")
+    
+    # Check if test files exist
+    if os.path.exists('sch9.oa'):
+        oa = OaFile('sch9.oa')
+        assert len(oa.tables) > 0, "Should parse tables from .oa file"
+        assert 0x1 in oa.tables, "Should contain table 0x1"
+        print(f"  ✓ OaFile parses {len(oa.tables)} tables from sch9.oa")
+    else:
+        print("  ⊘ Skipping (sch9.oa not found)")
+
 def main():
     """Run all tests."""
     print("="*70)
@@ -136,6 +163,8 @@ def main():
         test_binary_diff_replace,
         test_print_diff,
         test_print_summary,
+        test_is_oa_file,
+        test_oa_file_parsing,
     ]
     
     passed = 0
