@@ -1,7 +1,7 @@
 # table_c_parser.py - Refactored to use BinaryCurator
 import struct
 import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 from oaparser.binary_curator import BinaryCurator, Region, NestedUnclaimedData
 import os
@@ -202,9 +202,11 @@ def _generate_diff(expected: bytes, actual: bytes) -> List[str]:
         exp_chunk = expected[i:i+16]
         act_chunk = actual[i:i+16]
         if exp_chunk != act_chunk:
-            diff_lines.append(f"    {i:04x}:")
-            diff_lines.append(f"      - Expected: {' '.join(f'{b:02x}' for b in exp_chunk)}")
-            diff_lines.append(f"      - Actual:   {' '.join(f'{b:02x}' for b in act_chunk)}")
+            diff_lines.extend([
+                f"    {i:04x}:",
+                f"      - Expected: {' '.join(f'{b:02x}' for b in exp_chunk)}",
+                f"      - Actual:   {' '.join(f'{b:02x}' for b in act_chunk)}"
+            ])
     return diff_lines
 
 @dataclass
@@ -374,11 +376,75 @@ class HypothesisParser:
         self._claim_generic_or_property(offset, size)
 
     def _claim_generic_or_property(self, offset: int, size: int):
-        if size <= 0: return
-        magic_number = b'\xa4\x00\x00\x00\x00\x00\x00\x00'
-        magic_number_offset_in_struct = 56
-        struct_size = 132
+        """
+        Scans a block of data for ComponentPropertyRecord structures.
+        Any data surrounding these structures is claimed as generic or property value.
+        """
+        if size <= 0:
+            return
+
+        magic_number = ComponentPropertyRecord.SIGNATURE
+        struct_size = ComponentPropertyRecord.RECORD_SIZE
+
         block_data = self.data[offset : offset + size]
+        cursor = 0
+
+        while cursor < size:
+            # Find the next occurrence of our magic number from the current cursor
+            found_pos = block_data.find(magic_number, cursor)
+
+            if found_pos != -1 and (size - found_pos) >= struct_size:
+                # Found a potential record.
+
+                # 1. Claim data *before* the found record as generic/property
+                pre_chunk_size = found_pos - cursor
+                if pre_chunk_size > 0:
+                    pre_chunk_offset = offset + cursor
+                    self._claim_as_generic_or_property_value(pre_chunk_offset, pre_chunk_size)
+
+                # 2. Claim the ComponentPropertyRecord itself
+                struct_offset = offset + found_pos
+                self.curator.seek(struct_offset)
+                struct_data = self.data[struct_offset : struct_offset + struct_size]
+                self.curator.claim(
+                    "ComponentPropertyRecord",
+                    struct_size,
+                    lambda d, p=struct_offset, rd=struct_data: ComponentPropertyRecord(
+                        offset=p,
+                        data=rd
+                    )
+                )
+
+                # 3. Update cursor to after the claimed struct
+                cursor = found_pos + struct_size
+            else:
+                # No more occurrences found, claim the rest of the block
+                remaining_size = size - cursor
+                if remaining_size > 0:
+                    remaining_offset = offset + cursor
+                    self._claim_as_generic_or_property_value(remaining_offset, remaining_size)
+                # Exit the loop
+                break
+
+    def _check_and_claim_unknown_struct(self, offset: int, size: int) -> bool:
+        """
+        Checks if a data block matches the unknown 60-byte structure pattern.
+        WARNING: This structure only appears in sch5-8, disappears after.
+        Returns True if claimed, False otherwise.
+        """
+        # Observed pattern (UNSTABLE - disappears in sch9+)
+        PATTERN_SIG = UnknownStruct60Byte.OBSERVED_PATTERN
+        SEPARATOR_SIG = UnknownStruct60Byte.OBSERVED_SEPARATOR
+        MIN_SIZE = len(PATTERN_SIG) + len(SEPARATOR_SIG)  # Must be at least 20 bytes
+
+        if size < MIN_SIZE:
+            return False
+
+        record_data = self.data[offset : offset + size]
+        
+        # The pattern is not at a fixed position due to variable padding.
+        # We find the pattern block, then check if it ends with the separator.
+        pattern_pos = record_data.find(PATTERN_SIG)
         
         valid_record_starts = []
         scan_cursor = 0
