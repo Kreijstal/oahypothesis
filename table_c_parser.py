@@ -346,9 +346,6 @@ class HypothesisParser:
         except ValueError:
             # Re-raise ValueError (including overlap detection errors) to caller
             raise
-        except Exception: 
-            pass
-        return self.curator.get_regions()
 
     def _parse_header_with_curator(self) -> int:
         if len(self.data) < 16: return 0
