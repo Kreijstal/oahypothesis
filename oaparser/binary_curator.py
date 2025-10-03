@@ -56,6 +56,28 @@ LOSSLESS DATA PHILOSOPHY:
    - "Magic: 0x12345678 (validated)"
    - Make expectations visible in the output
 
+OVERLAP DETECTION:
+==================
+
+The BinaryCurator enforces strict non-overlapping regions. When you attempt
+to claim a region that overlaps with a previously claimed region, it raises
+a ValueError with details about the conflict.
+
+This prevents common reverse engineering mistakes:
+- Accidentally claiming the same bytes twice
+- Overlapping structure definitions
+- Incorrect offset calculations
+
+Example:
+    curator.seek(10)
+    curator.claim("Header", 20, parser_func)  # Claims bytes 10-29
+    
+    curator.seek(15)  # This is inside the Header region!
+    curator.claim("Field", 5, parser_func)  # ❌ Raises ValueError
+    
+    ValueError: Overlap detected! Attempting to claim 'Field' at offset 15-19
+    (size 5), but it overlaps with 'Header' at offset 10-29 (size 20).
+
 This principle CANNOT be programmatically tested, but users and agents
 must enforce it. Violating this rule defeats the purpose of reverse
 engineering, which is to UNDERSTAND the data format.
