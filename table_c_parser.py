@@ -242,46 +242,72 @@ class UnknownStruct60Byte:
 
 @dataclass
 class ComponentPropertyRecord:
+    """
+    Parses the 132-byte structure that appears to define a component property.
+    This structure has a static header and a dynamic value ID at the end.
+    """
     offset: int
-    data: bytes
-    structure_id: int
-    value_id: int
-    config_matches: bool
-    full_data_view: bytes
-    filepath: Optional[str] = None
+    data: bytes  # The raw 132 bytes
 
-    # Fields for discovered counters, populated in __post_init__
-    counter_at_p160: Optional[int] = None
-    counter_at_p164: Optional[int] = None
+    # Parsed fields (initialized in __post_init__)
+    structure_id: int = field(init=False)
+    config_and_pointers: bytes = field(init=False)
+    padding: bytes = field(init=False)
+    value_id: int = field(init=False)
 
-    EXPECTED_CONFIG = bytes.fromhex("060000000500000001000000000000000200000000000000030000000000000004000000000000000003000000000000a400000000000000a800000000000000ac00000000000000b000000000000000b400000000000000")
+    # Assertion results (initialized in __post_init__)
+    config_matches: bool = field(init=False)
+    padding_matches: bool = field(init=False)
 
+    # Class-level constants
+    RECORD_SIZE = 132
+    SIGNATURE = b'\xa4\x00\x00\x00\x00\x00\x00\x00'
+    
+    # Expected patterns
+    EXPECTED_CONFIG = bytes.fromhex(
+        "06000000050000000100000000000000"
+        "02000000000000000300000000000000"
+        "04000000000000000003000000000000"
+        "a400000000000000a800000000000000"
+        "ac00000000000000b000000000000000"
+        "b400000000000000"
+    )
+    EXPECTED_PADDING = bytes.fromhex(
+        "04000000000000000400000000000000"
+        "04000000000000000400000000000000"
+    )
+    
     def __post_init__(self):
-        """
-        After the record is created, use the full data view to peek ahead
-        and parse the counters we know exist relative to this record's offset.
-        """
-        def get_val_from_full_view(relative_offset, size=4):
-            # Calculate the absolute offset in the full table data
-            absolute_offset = self.offset + relative_offset
-            # Check if the read is within the bounds of the full table data
-            if absolute_offset + size <= len(self.full_data_view):
-                return struct.unpack_from('<I', self.full_data_view, absolute_offset)[0]
-            return None
-
-        self.counter_at_p160 = get_val_from_full_view(160)
-        self.counter_at_p164 = get_val_from_full_view(164)
+        """Parse the raw data after the object is created."""
+        if len(self.data) != 132:
+            raise ValueError(f"ComponentPropertyRecord expects 132 bytes, got {len(self.data)}")
+        
+        self.structure_id = struct.unpack_from('<Q', self.data, 0)[0]
+        self.config_and_pointers = self.data[8:96]
+        self.padding = self.data[96:128]
+        self.value_id = struct.unpack_from('<I', self.data, 128)[0]
+        self.config_matches = (self.config_and_pointers == self.EXPECTED_CONFIG)
+        self.padding_matches = (self.padding == self.EXPECTED_PADDING)
 
     def __str__(self):
         lines = [
-            f"ComponentPropertyRecord (Offset: {self.offset}, Size: {len(self.data)})",
-            f"  - Core Value ID: {format_int(self.value_id)}",
-            f"  - Core Config Matches: {self.config_matches}",
+            "Component Property Record (132 bytes)",
+            f"  - Structure Type ID: 0x{self.structure_id:016x}",
+            f"  - Value ID: {self.value_id} (0x{self.value_id:x})",
         ]
-        if self.counter_at_p160 is not None:
-            lines.append(f"  - Discovered Counter @ Offset+160: {format_int(self.counter_at_p160)}")
-        if self.counter_at_p164 is not None:
-            lines.append(f"  - Discovered Counter @ Offset+164: {format_int(self.counter_at_p164)}")
+
+        if self.config_matches:
+            lines.append("  - Config/Pointers (88 bytes): OK (matches known pattern)")
+        else:
+            lines.append("  - Config/Pointers (88 bytes): MISMATCH")
+            lines.extend(_generate_diff(self.EXPECTED_CONFIG, self.config_and_pointers))
+
+        if self.padding_matches:
+            lines.append("  - Padding (32 bytes): OK (matches known pattern)")
+        else:
+            lines.append("  - Padding (32 bytes): MISMATCH")
+            lines.extend(_generate_diff(self.EXPECTED_PADDING, self.padding))
+
         return "\n".join(lines)
 
 class HypothesisParser:
