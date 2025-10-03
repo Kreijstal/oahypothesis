@@ -15,19 +15,20 @@ from oaparser.binary_curator import ClaimedRegion
 
 
 def test_unknown_struct_detection():
-    """Test that the separator-based structure is detected in files where it exists (sch5-11)."""
+    """Test that the separator-based structure is detected in files where it exists (sch5-12)."""
     print("="*70)
     print("TEST: Separator-Based Structure Detection and Parsing")
-    print("This structure appears in sch5-11, detected by separator pattern")
+    print("This structure appears in sch5-12, detected by separator core pattern")
     print("="*70)
     
     # Test files that are known to contain the structure
-    test_files = ['sch5.oa', 'sch6.oa', 'sch9.oa', 'sch11.oa']
+    test_files = ['sch5.oa', 'sch6.oa', 'sch9.oa', 'sch11.oa', 'sch12.oa']
     expected_values = {
         'sch5.oa': [8, 3, 0],
         'sch6.oa': [8, 3, 1, 2],
         'sch9.oa': [3, 3, 0],
         'sch11.oa': [8, 4, 0],
+        'sch12.oa': [8, 4, 0],
     }
     
     all_passed = True
@@ -85,11 +86,11 @@ def test_unknown_struct_detection():
                                 else:
                                     print(f"    ⚠ Payload values: {payload_ints} (expected: {expected})")
                             
-                            # Check that separator pattern is present
-                            if UnknownStruct60Byte.OBSERVED_SEPARATOR in rec.trailing_separator:
-                                print(f"    ✓ Contains separator pattern")
+                            # Check that separator core is present
+                            if UnknownStruct60Byte.SEPARATOR_CORE in rec.trailing_separator:
+                                print(f"    ✓ Contains separator core")
                             else:
-                                print(f"    ✗ Missing separator pattern")
+                                print(f"    ✗ Missing separator core")
                                 all_passed = False
                         
                         break
@@ -116,13 +117,13 @@ def test_unknown_struct_detection():
 
 
 def test_structure_absence_in_later_files():
-    """Test that the structure is absent in sch12+ as expected."""
+    """Test that the structure is absent in sch13+ as expected."""
     print("\n" + "="*70)
-    print("TEST: Structure Absence (should NOT appear in sch12+)")
+    print("TEST: Structure Absence (should NOT appear in sch13+)")
     print("="*70)
     
     # Test files where structure should NOT appear
-    test_files = ['sch12.oa', 'sch13.oa', 'sch14.oa']
+    test_files = ['sch13.oa', 'sch14.oa', 'sch15.oa']
     
     all_passed = True
     for test_file in test_files:
@@ -199,9 +200,9 @@ if __name__ == '__main__':
     
     if test1_pass and test2_pass:
         print("\nALL TESTS PASSED ✓")
-        print("\nNOTE: This structure appears in sch5-11 and is detected by")
-        print("searching for the separator pattern. The payload values change")
-        print("over time, showing it's a dynamic data structure, not a fixed signature.")
+        print("\nNOTE: This structure appears in sch5-12 and is detected by")
+        print("searching for the stable separator core pattern. The payload values change")
+        print("over time, and the separator has variable bytes, showing it's a dynamic structure.")
         exit(0)
     else:
         print("\nSOME TESTS FAILED ✗")

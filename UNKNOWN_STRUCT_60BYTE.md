@@ -12,10 +12,11 @@ This document describes a structure that was **MISUNDERSTOOD** in the original a
 - Mysteriously "disappears" in sch9+
 
 ### NEW (Correct) Understanding  
-- Structure appears in **sch5-11** (7 files, not just 4)
-- Detected by looking for **separator pattern** `00 00 00 c8 02 00 00 00 e8 00 1a 03`
+- Structure appears in **sch5-12** (8 files, not just 4!)
+- Detected by **separator core** `00 00 00 c8 02 00 00 00` (last 4 bytes variable)
 - The `08 00 00 00` is **DATA**, not a signature - it changes to `03 00 00 00` in sch9+
-- Structure doesn't disappear, it was just **not being detected** because we looked for the wrong thing
+- The separator itself has variable bytes (changes `e8 00` → `7b 04` in sch12)
+- Structure doesn't disappear until sch13, it was just **not being detected** correctly
 
 ## Structure Layout
 
@@ -34,15 +35,16 @@ This document describes a structure that was **MISUNDERSTOOD** in the original a
 
 The payload contains integer values that change across files:
 
-| File    | Payload Values     | Notes                          |
-|---------|--------------------|--------------------------------|
-| sch5    | [8, 3, 0]          | Has 0xffffffff marker          |
-| sch6    | [8, 3, 1, 2]       | No marker, 56 bytes total      |
-| sch7    | [8, 3, 1, 2]       | No marker, 60 bytes total      |
-| sch8    | [8, 3, 1, 2]       | No marker, 60 bytes total      |
-| sch9    | [3, 3, 0]          | Has 0xffffffff marker          |
-| sch10   | [3, 3, 0]          | Has 0xffffffff marker          |
-| sch11   | [8, 4, 0]          | Has 0xffffffff marker          |
+| File    | Payload Values     | Separator Variant | Notes                          |
+|---------|--------------------|-------------------|--------------------------------|
+| sch5    | [8, 3, 0]          | e8 00 1a 03      | Has 0xffffffff marker          |
+| sch6    | [8, 3, 1, 2]       | ?                | No marker, 56 bytes total      |
+| sch7    | [8, 3, 1, 2]       | ?                | No marker, 60 bytes total      |
+| sch8    | [8, 3, 1, 2]       | ?                | No marker, 60 bytes total      |
+| sch9    | [3, 3, 0]          | e8 00 1a 03      | Has 0xffffffff marker          |
+| sch10   | [3, 3, 0]          | e8 00 1a 03      | Has 0xffffffff marker          |
+| sch11   | [8, 4, 0]          | e8 00 1a 03      | Has 0xffffffff marker          |
+| sch12   | [8, 4, 0]          | 7b 04 1a 03      | Separator variant changes!     |
 
 ## Key Insights
 
@@ -51,8 +53,12 @@ The bytes `08 00 00 00 03 00 00 00` are **not** a signature for structure detect
 - First int: 8 in sch5-8,11 but **changes to 3** in sch9-10
 - Second int: Always 3 (except sch11 where it's 4)
 
-### 2. The Reliable Anchor is the Separator
-The **only** reliable pattern is the separator: `00 00 00 c8 02 00 00 00 e8 00 1a 03`
+### 2. The Reliable Anchor is the Separator Core
+The **only** reliable pattern is the **stable 8-byte core** of the separator: `00 00 00 c8 02 00 00 00`
+
+The full separator is 12 bytes, but the last 4 bytes are variable:
+- Most files: `e8 00 1a 03`
+- sch12: `7b 04 1a 03` (changes between sch11 and sch12!)
 
 This appears at the end of the structure in all files.
 
@@ -70,15 +76,16 @@ The difference is due to:
 
 The correct way to detect this structure:
 
-1. **Search for separator pattern** `00 00 00 c8 02 00 00 00 e8 00 1a 03`
-2. **Work backwards** from the separator
-3. Check for optional 0xffffffff marker (4 bytes before separator)
-4. Extract payload (non-zero values before marker/separator)
-5. Extract padding (zeros at the beginning)
+1. **Search for separator core** `00 00 00 c8 02 00 00 00` (stable 8 bytes)
+2. **Verify** there are 4 more bytes after the core (variable separator tail)
+3. **Work backwards** from the separator
+4. Check for optional 0xffffffff marker (4 bytes before separator)
+5. Extract payload (non-zero values before marker/separator)
+6. Extract padding (zeros at the beginning)
 
 ## Files With/Without Structure
 
-### Files WITH Structure (7 total)
+### Files WITH Structure (8 total)
 - ✓ sch5.oa
 - ✓ sch6.oa
 - ✓ sch7.oa
@@ -86,9 +93,10 @@ The correct way to detect this structure:
 - ✓ sch9.oa
 - ✓ sch10.oa
 - ✓ sch11.oa
+- ✓ sch12.oa
 
-### Files WITHOUT Structure (12 total)
-- sch12.oa, sch13.oa, sch14.oa, sch15.oa, sch16.oa, sch17.oa, sch18.oa
+### Files WITHOUT Structure (11 total)
+- sch13.oa, sch14.oa, sch15.oa, sch16.oa, sch17.oa, sch18.oa
 - sch_old.oa, sch_new.oa, sch2.oa, sch3.oa, sch4.oa
 
 ## What This Structure Might Be

@@ -218,7 +218,8 @@ class UnknownStruct60Byte:
     payload: bytes
     trailing_separator: bytes
     OBSERVED_PATTERN = bytes.fromhex("0800000003000000")  # Legacy - no longer used for detection
-    OBSERVED_SEPARATOR = bytes.fromhex("000000c802000000e8001a03")
+    OBSERVED_SEPARATOR = bytes.fromhex("000000c802000000e8001a03")  # One observed variant
+    SEPARATOR_CORE = bytes.fromhex("000000c802000000")  # The stable part used for detection
     
     def __str__(self):
         lines = [f"Separator-Based Structure (found in all .oa files)"]
@@ -239,12 +240,15 @@ class UnknownStruct60Byte:
         lines.append(f"  - Payload: {len(self.payload)} bytes")
         lines.append(f"    Values: [{payload_ints_str}]")
         
-        # Check if trailing separator contains the expected pattern
-        if self.OBSERVED_SEPARATOR in self.trailing_separator:
-            lines.append(f"  - Trailing: {len(self.trailing_separator)} bytes (contains separator pattern)")
+        # Check if trailing separator contains the stable core
+        if UnknownStruct60Byte.SEPARATOR_CORE in self.trailing_separator:
+            lines.append(f"  - Trailing: {len(self.trailing_separator)} bytes (contains separator core)")
             # Show if there's a 0xffffffff marker
             if len(self.trailing_separator) >= 16 and self.trailing_separator.startswith(b'\xff\xff\xff\xff'):
                 lines.append(f"    Contains 0xffffffff marker before separator")
+            # Show the actual separator bytes
+            sep_hex = " ".join(f"{b:02x}" for b in self.trailing_separator)
+            lines.append(f"    Bytes: {sep_hex}")
         else:
             lines.append(f"  - Trailing: {len(self.trailing_separator)} bytes (UNEXPECTED)")
             lines.extend(_generate_diff(self.OBSERVED_SEPARATOR, self.trailing_separator[:len(self.OBSERVED_SEPARATOR)]))
@@ -493,26 +497,33 @@ class HypothesisParser:
     def _check_and_claim_unknown_struct(self, offset: int, size: int) -> bool:
         """
         Checks if a data block contains the separator-based structure pattern.
-        This structure appears in all .oa files, not just sch5-8.
-        The detection is based on the separator pattern, not a fixed "signature".
+        This structure appears in many .oa files (sch5-12+).
+        The detection is based on the stable separator core, not a fixed "signature".
         Returns True if claimed, False otherwise.
         """
-        SEPARATOR_SIG = UnknownStruct60Byte.OBSERVED_SEPARATOR
-        MIN_SIZE = 12 + len(SEPARATOR_SIG)  # Need at least some data + separator
+        # Use only the stable 8-byte core for detection
+        # The last 4 bytes of the separator are variable
+        SEPARATOR_CORE = UnknownStruct60Byte.SEPARATOR_CORE
+        MIN_SIZE = 12 + len(SEPARATOR_CORE)  # Need at least some data + separator core
 
         if size < MIN_SIZE:
             return False
 
         record_data = self.data[offset : offset + size]
         
-        # Search for the separator pattern - this is the reliable anchor
-        separator_pos = record_data.find(SEPARATOR_SIG)
+        # Search for the separator core - this is the reliable anchor
+        separator_pos = record_data.find(SEPARATOR_CORE)
         if separator_pos == -1:
             return False
         
-        # The separator should be at the end of the record
-        expected_end = separator_pos + len(SEPARATOR_SIG)
-        if expected_end != len(record_data):
+        # The full separator is separator_core + 4 variable bytes
+        # Check that there are at least 4 more bytes after the core
+        if separator_pos + len(SEPARATOR_CORE) + 4 > len(record_data):
+            return False
+        
+        # The separator (core + 4 bytes) should be at the end of the record
+        separator_end = separator_pos + len(SEPARATOR_CORE) + 4
+        if separator_end != len(record_data):
             return False
         
         # Work backwards from separator to find the actual data
