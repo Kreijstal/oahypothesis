@@ -3,8 +3,12 @@
 Compare tables between two .oa files to identify changes
 """
 import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import struct
-from table_a_parser import TableAParser
+from parsers.table_a_parser import TableAParser
 
 def read_oa_file(filepath):
     """Read .oa file and return table information"""

@@ -9,8 +9,13 @@ This script examines:
 4. Patterns in table 0xc structure
 """
 
+import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import struct
-from table_c_parser import HypothesisParser, PropertyValueRecord
+from parsers.table_c_parser import HypothesisParser, PropertyValueRecord
 
 def get_table_0xc(filename):
     """Extract Table 0xC data from an .oa file."""
@@ -61,10 +66,10 @@ def main():
     print("="*80)
     
     files = [
-        ('sch5.oa', 'R0 = 2K (first time)', 70),
-        ('sch9.oa', 'R1 = 2K (string exists)', 124),
-        ('sch10.oa', 'R1 = 3K (new string)', 126),
-        ('sch14.oa', 'Mystery file', 136),
+        ('files/rc/sch5.oa', 'R0 = 2K (first time)', 70),
+        ('files/rc/sch9.oa', 'R1 = 2K (string exists)', 124),
+        ('files/rc/sch10.oa', 'R1 = 3K (new string)', 126),
+        ('files/rc/sch14.oa', 'Mystery file', 136),
     ]
     
     print("\n" + "="*80)
@@ -98,8 +103,8 @@ def main():
     print("BYTE-LEVEL DIFF: sch9 (2K) → sch10 (3K)")
     print("="*80)
     
-    data9 = get_table_0xc('sch9.oa')
-    data10 = get_table_0xc('sch10.oa')
+    data9 = get_table_0xc('files/rc/sch9.oa')
+    data10 = get_table_0xc('files/rc/sch10.oa')
     
     print(f"\nTable sizes: sch9={len(data9)} bytes, sch10={len(data10)} bytes")
     

@@ -9,7 +9,8 @@ class ParsedOaFile:
     from an .oa file, ignoring the noisy, shifting offsets of raw table data.
     """
     def __init__(self, filepath):
-        self.filepath = os.path.basename(filepath)
+        self.filepath = filepath
+        self.filename = os.path.basename(filepath)
         self.tables = {}
         self.strings = []
         self.save_counter = -1
@@ -17,7 +18,7 @@ class ParsedOaFile:
         try:
             self._parse()
         except Exception as e:
-            print(f"[ERROR] Failed to parse {self.filepath}: {e}")
+            print(f"[ERROR] Failed to parse {self.filename}: {e}")
 
     def _parse(self):
         """
@@ -73,7 +74,7 @@ def print_semantic_diff(old_file, new_file):
     semantic diff report.
     """
     print("\n" + "="*80)
-    print(f"--- Diffing '{old_file.filepath}' (OLD) vs. '{new_file.filepath}' (NEW) ---")
+    print(f"--- Diffing '{old_file.filename}' (OLD) vs. '{new_file.filename}' (NEW) ---")
     print("="*80)
 
     # 1. Compare Metadata
@@ -103,8 +104,8 @@ def print_semantic_diff(old_file, new_file):
     diff = list(difflib.unified_diff(
         old_file.strings,
         new_file.strings,
-        fromfile=old_file.filepath,
-        tofile=new_file.filepath,
+        fromfile=old_file.filename,
+        tofile=new_file.filename,
         lineterm=''
     ))
 
@@ -125,7 +126,7 @@ def print_semantic_diff(old_file, new_file):
 
 if __name__ == '__main__':
     # Find all .oa files in the current directory
-    oa_files = sorted(glob.glob('*.oa'))
+    oa_files = sorted(glob.glob('files/rc/*.oa'))
 
     if len(oa_files) < 2:
         print("Error: Found fewer than two .oa files in this directory. Nothing to compare.")

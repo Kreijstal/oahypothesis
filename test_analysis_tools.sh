@@ -35,43 +35,43 @@ run_test() {
 
 # Test 1: parser.py can parse sch_old.oa
 run_test "parser.py on sch_old.oa" \
-    "python3 parser.py sch_old.oa"
+    "python3 tools/parser.py files/rc/sch_old.oa"
 
 # Test 2: parser.py can parse sch_new.oa
 run_test "parser.py on sch_new.oa" \
-    "python3 parser.py sch_new.oa"
+    "python3 tools/parser.py files/rc/sch_new.oa"
 
 # Test 3: parser.py --hexdump mode
 run_test "parser.py --hexdump mode" \
-    "python3 parser.py sch_old.oa --hexdump"
+    "python3 tools/parser.py files/rc/sch_old.oa --hexdump"
 
 # Test 4: compare_tables.py
 run_test "compare_tables.py" \
-    "python3 compare_tables.py sch_old.oa sch_new.oa"
+    "python3 tools/compare_tables.py files/rc/sch_old.oa files/rc/sch_new.oa"
 
 # Test 5: compare_tables.py (replaces analyze_changes.py)
 run_test "compare_tables.py (replaces analyze_changes.py)" \
-    "python3 compare_tables.py sch_old.oa sch_new.oa"
+    "python3 tools/compare_tables.py files/rc/sch_old.oa files/rc/sch_new.oa"
 
 # Test 6: String table finds "popop" in sch_old.oa
 run_test "Find 'popop' in sch_old.oa" \
-    "python3 parser.py sch_old.oa | grep -q 'popop'"
+    "python3 tools/parser.py files/rc/sch_old.oa | grep -q 'popop'"
 
 # Test 7: String table finds "THISISNOWTHERESISTOR" in sch_new.oa
 run_test "Find 'THISISNOWTHERESISTOR' in sch_new.oa" \
-    "python3 parser.py sch_new.oa | grep -q 'THISISNOWTHERESISTOR'"
+    "python3 tools/parser.py files/rc/sch_new.oa | grep -q 'THISISNOWTHERESISTOR'"
 
 # Test 8: compare_tables detects 7 changed tables
 run_test "Detect 7 changed tables" \
-    "python3 compare_tables.py sch_old.oa sch_new.oa | grep -q 'Tables that changed: 7'"
+    "python3 tools/compare_tables.py files/rc/sch_old.oa files/rc/sch_new.oa | grep -q 'Tables that changed: 7'"
 
 # Test 9: compare_tables detects string addition
 run_test "Detect string addition" \
-    "python3 compare_tables.py sch_old.oa sch_new.oa | grep -q 'THISISNOWTHERESISTOR'"
+    "python3 tools/compare_tables.py files/rc/sch_old.oa files/rc/sch_new.oa | grep -q 'THISISNOWTHERESISTOR'"
 
 # Test 10: String table size increase detected
 run_test "Detect string table size increase" \
-    "python3 compare_tables.py sch_old.oa sch_new.oa | grep -q '+20 String Table'"
+    "python3 tools/compare_tables.py files/rc/sch_old.oa files/rc/sch_new.oa | grep -q '+20 String Table'"
 
 echo ""
 echo "======================================"

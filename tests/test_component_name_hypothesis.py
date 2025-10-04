@@ -2,8 +2,12 @@
 """
 Test script to validate the component-name connection hypothesis across all .oa files.
 """
-import struct
 import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import struct
 
 def get_table_data(filename, table_id):
     """Extract data from a specific table"""
@@ -61,15 +65,15 @@ def test_hypothesis():
     print()
     
     files = [
-        ('sch_old.oa', 'R0="popop"'),
-        ('sch_new.oa', 'R0="THISISNOWTHERESISTOR"'),
-        ('sch2.oa', 'No change (just saved)'),
-        ('sch3.oa', 'R0="THISISNOWTHERESISTOR2"'),
-        ('sch4.oa', 'V0="THISISNOWTHERESISTOR3"'),
-        ('sch5.oa', 'R0 resistance=2K'),
-        ('sch6.oa', 'R0 → C0 (resistor to capacitor)'),
-        ('sch7.oa', 'Added R1 (unconnected)'),
-        ('sch8.oa', 'Connected R1 to net1'),
+        ('files/rc/sch_old.oa', 'R0="popop"'),
+        ('files/rc/sch_new.oa', 'R0="THISISNOWTHERESISTOR"'),
+        ('files/rc/sch2.oa', 'No change (just saved)'),
+        ('files/rc/sch3.oa', 'R0="THISISNOWTHERESISTOR2"'),
+        ('files/rc/sch4.oa', 'V0="THISISNOWTHERESISTOR3"'),
+        ('files/rc/sch5.oa', 'R0 resistance=2K'),
+        ('files/rc/sch6.oa', 'R0 → C0 (resistor to capacitor)'),
+        ('files/rc/sch7.oa', 'Added R1 (unconnected)'),
+        ('files/rc/sch8.oa', 'Connected R1 to net1'),
     ]
     
     print("Hypothesis: String IDs in table 0xb increase with each new component name")

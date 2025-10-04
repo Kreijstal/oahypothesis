@@ -8,10 +8,13 @@ This test validates:
 3. Changes across different .oa files as documented in changes.txt
 """
 
-import struct
 import sys
 import os
-from table_107_parser import Table107Parser
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import struct
+from parsers.table_107_parser import Table107Parser
 from oaparser.binary_curator import ClaimedRegion, UnclaimedRegion
 
 
@@ -58,10 +61,10 @@ def test_formula_validation():
     print()
     
     test_cases = [
-        ('sch6.oa', 'C0 created'),
-        ('sch7.oa', 'R1 added'),
-        ('sch8.oa', 'R1 connected'),
-        ('sch14.oa', 'Latest'),
+        ('files/rc/sch6.oa', 'C0 created'),
+        ('files/rc/sch7.oa', 'R1 added'),
+        ('files/rc/sch8.oa', 'R1 connected'),
+        ('files/rc/sch14.oa', 'Latest'),
     ]
     
     all_passed = True
@@ -112,8 +115,8 @@ def test_parser_functionality():
     print()
     
     test_cases = [
-        ('sch6.oa', 'C0 created'),
-        ('sch14.oa', 'Latest'),
+        ('files/rc/sch6.oa', 'C0 created'),
+        ('files/rc/sch14.oa', 'Latest'),
     ]
     
     all_passed = True
@@ -187,9 +190,9 @@ def test_cross_file_changes():
     
     # Test files in sequence
     test_sequence = [
-        'sch6.oa',   # C0 created (byte should be 0x00)
-        'sch7.oa',   # After creation (byte should be non-zero)
-        'sch14.oa',  # Latest
+        'files/rc/sch6.oa',   # C0 created (byte should be 0x00)
+        'files/rc/sch7.oa',   # After creation (byte should be non-zero)
+        'files/rc/sch14.oa',  # Latest
     ]
     
     available_files = [f for f in test_sequence if os.path.exists(f)]
