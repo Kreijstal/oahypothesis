@@ -44,8 +44,8 @@ def main():
     
     # Test 1: First time setting 2K
     run_comparison(
-        'sch4.oa',
-        'sch5.oa',
+        'files/rc/sch4.oa',
+        'files/rc/sch5.oa',
         "First Time Setting Resistance to 2K"
     )
     
@@ -57,8 +57,8 @@ def main():
     
     # Test 2: Second time using 2K
     run_comparison(
-        'sch5.oa',
-        'sch9.oa',
+        'files/rc/sch5.oa',
+        'files/rc/sch9.oa',
         "Setting Different Resistor to 2K (String Already Exists)"
     )
     
@@ -71,8 +71,8 @@ def main():
     
     # Test 3: Changing 2K to 3K
     run_comparison(
-        'sch9.oa',
-        'sch10.oa',
+        'files/rc/sch9.oa',
+        'files/rc/sch10.oa',
         "Changing Resistance from 2K to 3K"
     )
     
@@ -85,8 +85,8 @@ def main():
     
     # Test 4: The mystery file
     run_comparison(
-        'sch13.oa',
-        'sch14.oa',
+        'files/rc/sch13.oa',
+        'files/rc/sch14.oa',
         "The Mystery File (sch14.oa)"
     )
     

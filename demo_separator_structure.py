@@ -64,14 +64,14 @@ def main():
     
     # Files to check
     files_to_check = [
-        ('sch5.oa', 'First appearance'),
-        ('sch6.oa', 'Resistor -> Capacitor'),
-        ('sch7.oa', 'New resistor added'),
-        ('sch8.oa', 'Wire drawn'),
-        ('sch9.oa', 'R1 resistance changed'),
-        ('sch10.oa', 'R1 resistance changed again'),
-        ('sch11.oa', 'Additional change'),
-        ('sch12.oa', 'Structure disappears'),
+        ('files/rc/sch5.oa', 'First appearance'),
+        ('files/rc/sch6.oa', 'Resistor -> Capacitor'),
+        ('files/rc/sch7.oa', 'New resistor added'),
+        ('files/rc/sch8.oa', 'Wire drawn'),
+        ('files/rc/sch9.oa', 'R1 resistance changed'),
+        ('files/rc/sch10.oa', 'R1 resistance changed again'),
+        ('files/rc/sch11.oa', 'Additional change'),
+        ('files/rc/sch12.oa', 'Structure disappears'),
     ]
     
     print(f"{'File':<15} {'Description':<30} {'Payload Values':<20} {'Size':<6} {'Marker'}")

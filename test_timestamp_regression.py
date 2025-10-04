@@ -13,15 +13,15 @@ from table_c_parser import HypothesisParser
 
 # Golden timestamps extracted from each file (Unix timestamps)
 EXPECTED_TIMESTAMPS = {
-    'sch_old.oa': 1759219482,      # 2025-09-30 08:04:42 UTC
-    'sch_new.oa': 1759220368,      # 2025-09-30 08:19:28 UTC
-    'sch2.oa': 1759220630,         # 2025-09-30 08:23:50 UTC
-    'sch3.oa': 1759267303,         # 2025-09-30 21:21:43 UTC
-    'sch4.oa': 1759268290,         # 2025-09-30 21:38:10 UTC
-    'sch5.oa': 1759269165,         # 2025-09-30 21:52:45 UTC
-    'sch6.oa': 1759269681,         # 2025-09-30 22:01:21 UTC
-    'sch7.oa': 1759269898,         # 2025-09-30 22:04:58 UTC
-    'sch8.oa': 1759270115,         # 2025-09-30 22:08:35 UTC
+    'files/rc/sch_old.oa': 1759219482,      # 2025-09-30 08:04:42 UTC
+    'files/rc/sch_new.oa': 1759220368,      # 2025-09-30 08:19:28 UTC
+    'files/rc/sch2.oa': 1759220630,         # 2025-09-30 08:23:50 UTC
+    'files/rc/sch3.oa': 1759267303,         # 2025-09-30 21:21:43 UTC
+    'files/rc/sch4.oa': 1759268290,         # 2025-09-30 21:38:10 UTC
+    'files/rc/sch5.oa': 1759269165,         # 2025-09-30 21:52:45 UTC
+    'files/rc/sch6.oa': 1759269681,         # 2025-09-30 22:01:21 UTC
+    'files/rc/sch7.oa': 1759269898,         # 2025-09-30 22:04:58 UTC
+    'files/rc/sch8.oa': 1759270115,         # 2025-09-30 22:08:35 UTC
 }
 
 def extract_table_c_data(filepath):

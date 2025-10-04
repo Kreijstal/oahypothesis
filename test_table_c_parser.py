@@ -21,21 +21,21 @@ def test_timestamps():
     print("="*70)
     
     expected = {
-        'sch_old.oa': 1759219482,
-        'sch_new.oa': 1759220368,
-        'sch2.oa': 1759220630,
-        'sch3.oa': 1759267303,
-        'sch4.oa': 1759268290,
-        'sch5.oa': 1759269165,
-        'sch6.oa': 1759269681,
-        'sch7.oa': 1759269898,
-        'sch8.oa': 1759270115,
-        'sch9.oa': 1759354688,
-        'sch10.oa': 1759354769,
-        'sch11.oa': 1759354797,
-        'sch12.oa': 1759354903,
-        'sch13.oa': 1759354958,
-        'sch14.oa': 1759356124,
+        'files/rc/sch_old.oa': 1759219482,
+        'files/rc/sch_new.oa': 1759220368,
+        'files/rc/sch2.oa': 1759220630,
+        'files/rc/sch3.oa': 1759267303,
+        'files/rc/sch4.oa': 1759268290,
+        'files/rc/sch5.oa': 1759269165,
+        'files/rc/sch6.oa': 1759269681,
+        'files/rc/sch7.oa': 1759269898,
+        'files/rc/sch8.oa': 1759270115,
+        'files/rc/sch9.oa': 1759354688,
+        'files/rc/sch10.oa': 1759354769,
+        'files/rc/sch11.oa': 1759354797,
+        'files/rc/sch12.oa': 1759354903,
+        'files/rc/sch13.oa': 1759354958,
+        'files/rc/sch14.oa': 1759356124,
     }
     
     all_passed = True
@@ -86,8 +86,8 @@ def test_property_value_detection():
     # signature of a PropertyValueRecord. Others are now GenericRecords.
     # Based on analysis, the sch13/14 change involves a true PVR.
     test_cases = [
-        ('sch13.oa', 133),
-        ('sch14.oa', 136),
+        ('files/rc/sch13.oa', 133),
+        ('files/rc/sch14.oa', 136),
     ]
     
     all_passed = True
@@ -166,8 +166,8 @@ def test_generic_record_string_change():
         return string_refs
 
     try:
-        strings13 = get_generic_strings('sch13.oa')
-        strings14 = get_generic_strings('sch14.oa')
+        strings13 = get_generic_strings('files/rc/sch13.oa')
+        strings14 = get_generic_strings('files/rc/sch14.oa')
 
         # Check that '3K' was replaced by '2K'
         change_present = '3K' in strings13 and '3K' not in strings14
@@ -196,7 +196,7 @@ def test_component_property_record_detection():
     print("TEST 4: Component Property Record Detection")
     print("="*70)
 
-    filename = 'sch5.oa'
+    filename = 'files/rc/sch5.oa'
     expected_ids = {12, 16, 28} # The value_ids we expect to find in this file
 
     try:

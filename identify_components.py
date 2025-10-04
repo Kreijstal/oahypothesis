@@ -21,7 +21,8 @@ class ParsedOaFile:
     semantic information and the raw byte data of every table.
     """
     def __init__(self, filepath):
-        self.filepath = os.path.basename(filepath)
+        self.filepath = filepath
+        self.filename = os.path.basename(filepath)
         self.table_metadata = {} # id -> {offset, size}
         self.table_data = {}     # id -> raw_bytes
         self.strings = []
@@ -71,7 +72,7 @@ def print_full_diff(old_file, new_file):
     both semantic and byte-level differences.
     """
     print("\n" + "#"*80)
-    print(f"### Diffing '{old_file.filepath}' (OLD) vs. '{new_file.filepath}' (NEW) ###")
+    print(f"### Diffing '{old_file.filename}' (OLD) vs. '{new_file.filename}' (NEW) ###")
     print("#"*80)
 
     # --- Part 1: Semantic Diff ---
@@ -127,7 +128,7 @@ def print_full_diff(old_file, new_file):
             old_dump = hex_dump(old_data)
             new_dump = hex_dump(new_data)
 
-            hex_diff = list(difflib.unified_diff(old_dump, new_dump, fromfile=old_file.filepath, tofile=new_file.filepath, lineterm=''))
+            hex_diff = list(difflib.unified_diff(old_dump, new_dump, fromfile=old_file.filename, tofile=new_file.filename, lineterm=''))
 
             # Print only relevant lines from the diff output
             for line in hex_diff:
@@ -139,7 +140,7 @@ def print_full_diff(old_file, new_file):
 
 
 if __name__ == '__main__':
-    oa_files = sorted(glob.glob('sch*.oa'))
+    oa_files = sorted(glob.glob('files/rc/sch*.oa'))
     if not oa_files:
         print("Error: No 'sch*.oa' files found in this directory.")
         sys.exit(1)

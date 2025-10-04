@@ -61,7 +61,7 @@ def main():
     print("\nSearching for .oa files...")
     
     # Find all .oa files
-    oa_files = sorted(glob.glob("*.oa"))
+    oa_files = sorted(glob.glob("files/rc/*.oa"))
     
     if not oa_files:
         print("❌ No .oa files found in current directory!")

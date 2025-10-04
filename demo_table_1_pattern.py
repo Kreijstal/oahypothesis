@@ -57,7 +57,7 @@ def main():
     print()
     
     # Get all .oa files in sorted order
-    files = sorted(glob.glob('sch*.oa'))
+    files = sorted(glob.glob('files/rc/sch*.oa'))
     
     if not files:
         print("No .oa files found in current directory")

@@ -22,16 +22,16 @@ def test_unknown_struct_detection():
     print("="*70)
     
     # Test files that are known to contain the structure
-    test_files = ['sch5.oa', 'sch6.oa', 'sch9.oa', 'sch11.oa', 'sch12.oa', 'sch13.oa', 'sch15.oa', 'sch18.oa']
+    test_files = ['files/rc/sch5.oa', 'files/rc/sch6.oa', 'files/rc/sch9.oa', 'files/rc/sch11.oa', 'files/rc/sch12.oa', 'files/rc/sch13.oa', 'files/rc/sch15.oa', 'files/rc/sch18.oa']
     expected_values = {
-        'sch5.oa': [8, 3, 0],
-        'sch6.oa': [8, 3, 1, 2],
-        'sch9.oa': [3, 3, 0],
-        'sch11.oa': [8, 4, 0],
-        'sch12.oa': [8, 4, 0],
-        'sch13.oa': [8, 5, 0],
-        'sch15.oa': [8, 5, 0],
-        'sch18.oa': [8, 5, 0],
+        'files/rc/sch5.oa': [8, 3, 0],
+        'files/rc/sch6.oa': [8, 3, 1, 2],
+        'files/rc/sch9.oa': [3, 3, 0],
+        'files/rc/sch11.oa': [8, 4, 0],
+        'files/rc/sch12.oa': [8, 4, 0],
+        'files/rc/sch13.oa': [8, 5, 0],
+        'files/rc/sch15.oa': [8, 5, 0],
+        'files/rc/sch18.oa': [8, 5, 0],
     }
     
     all_passed = True
@@ -126,7 +126,7 @@ def test_structure_absence_in_later_files():
     print("="*70)
     
     # Test files where structure should NOT appear
-    test_files = ['sch2.oa', 'sch3.oa', 'sch4.oa']
+    test_files = ['files/rc/sch2.oa', 'files/rc/sch3.oa', 'files/rc/sch4.oa']
     
     all_passed = True
     for test_file in test_files:
