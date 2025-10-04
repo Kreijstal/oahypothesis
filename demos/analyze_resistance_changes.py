@@ -9,8 +9,13 @@ This script examines:
 4. Patterns in table 0xc structure
 """
 
+import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import struct
-from table_c_parser import HypothesisParser, PropertyValueRecord
+from parsers.table_c_parser import HypothesisParser, PropertyValueRecord
 
 def get_table_0xc(filename):
     """Extract Table 0xC data from an .oa file."""

@@ -9,8 +9,13 @@ This test verifies that the parser correctly identifies and parses
 this structure when it is present in the data.
 """
 
+import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import struct
-from table_c_parser import HypothesisParser, UnknownStruct60Byte
+from parsers.table_c_parser import HypothesisParser, UnknownStruct60Byte
 from oaparser.binary_curator import ClaimedRegion
 
 

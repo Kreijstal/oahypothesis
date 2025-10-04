@@ -8,10 +8,13 @@ This test validates:
 3. Changes across different .oa files as documented in changes.txt
 """
 
-import struct
 import sys
 import os
-from table_107_parser import Table107Parser
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import struct
+from parsers.table_107_parser import Table107Parser
 from oaparser.binary_curator import ClaimedRegion, UnclaimedRegion
 
 

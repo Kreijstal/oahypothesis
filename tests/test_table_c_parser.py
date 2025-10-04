@@ -9,9 +9,13 @@ Tests:
 """
 
 import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import struct
 import traceback
-from table_c_parser import HypothesisParser, PropertyValueRecord, TimestampRecord
+from parsers.table_c_parser import HypothesisParser, PropertyValueRecord, TimestampRecord
 from oaparser.binary_curator import ClaimedRegion
 
 def test_timestamps():
@@ -74,7 +78,7 @@ def test_timestamps():
     
     return all_passed
 
-from table_c_parser import GenericRecord
+from parsers.table_c_parser import GenericRecord
 
 def test_property_value_detection():
     """Test that true PropertyValueRecords are detected (with new strict logic)."""
@@ -188,7 +192,7 @@ def test_generic_record_string_change():
         traceback.print_exc()
         return False
 
-from table_c_parser import ComponentPropertyRecord
+from parsers.table_c_parser import ComponentPropertyRecord
 
 def test_component_property_record_detection():
     """Test that the 132-byte ComponentPropertyRecord is correctly identified."""

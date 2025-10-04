@@ -1,16 +1,20 @@
-import struct
 import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import struct
 import difflib
 import io
 
 # Import the intelligent parsers for all tables
-from table_c_parser import HypothesisParser
-from table_a_parser import TableAParser
-from table_b_parser import TableBParser
-from table_1d_parser import Table1dParser
-from table_133_parser import Table133Parser
-from table_1_parser import Table1Parser
-from table_107_parser import Table107Parser
+from parsers.table_c_parser import HypothesisParser
+from parsers.table_a_parser import TableAParser
+from parsers.table_b_parser import TableBParser
+from parsers.table_1d_parser import Table1dParser
+from parsers.table_133_parser import Table133Parser
+from parsers.table_1_parser import Table1Parser
+from parsers.table_107_parser import Table107Parser
 from oaparser import render_regions_to_string
 
 # Import binary diff functions from oa_diff2

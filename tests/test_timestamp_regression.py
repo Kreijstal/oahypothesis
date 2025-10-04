@@ -7,9 +7,14 @@ from all .oa files in the repository. The timestamps are the "golden data" that
 should remain consistent across parser changes.
 """
 
+import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import struct
 import glob
-from table_c_parser import HypothesisParser
+from parsers.table_c_parser import HypothesisParser
 
 # Golden timestamps extracted from each file (Unix timestamps)
 EXPECTED_TIMESTAMPS = {
@@ -53,7 +58,7 @@ def extract_timestamp_from_table_c(data):
     regions = parser.parse()
     
     # Find TimestampRecord in parsed regions
-    from table_c_parser import TimestampRecord
+    from parsers.table_c_parser import TimestampRecord
     from oaparser.binary_curator import ClaimedRegion
     
     for region in regions:

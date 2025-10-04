@@ -9,8 +9,13 @@ This script shows:
 4. The "signature" we thought was fixed is actually variable data
 """
 
+import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import struct
-from table_c_parser import HypothesisParser
+from parsers.table_c_parser import HypothesisParser
 
 def extract_table_0xc(filename):
     """Extract table 0xc and string table from .oa file"""
