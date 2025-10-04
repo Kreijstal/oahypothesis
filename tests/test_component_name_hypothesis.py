@@ -2,8 +2,12 @@
 """
 Test script to validate the component-name connection hypothesis across all .oa files.
 """
-import struct
 import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import struct
 
 def get_table_data(filename, table_id):
     """Extract data from a specific table"""
