@@ -311,23 +311,76 @@ class BaseTable:
     members: Dict[int, bytes] = field(default_factory=dict)  # id -> raw bytes
 
 
-def parse_base_tbl(data: bytes) -> Optional[BaseTable]:
-    """Parse a base-table container. Returns None if ``data`` is not one."""
+def parse_base_tbl(data: bytes, bo: Optional[str] = None) -> Optional[BaseTable]:
+    """Parse a base-table container. Returns None if ``data`` is not one.
+
+    ``bo`` is the file's byte order ("<" or ">").  Big-endian cellviews exist
+    in real libraries (598 of ~4000 files in the Cadence install), so when no
+    order is given both are tried.
+    """
+    for candidate in ([bo] if bo else ["<", ">"]):
+        bt = _parse_base_tbl_bo(data, candidate)
+        if bt:
+            return bt
+        bt = _parse_flat_tbl_bo(data, candidate)
+        if bt:
+            return bt
+    return None
+
+
+def _parse_flat_tbl_bo(data: bytes, bo: str) -> Optional[BaseTable]:
+    """Parse the older flat container (used by the big-endian cellviews).
+
+    Layout: a u32 at offset 0 gives the directory offset; at that offset +12 is
+    num_alloc and +16 is num_used, followed by the id/offset/size arrays of
+    ``num_used`` u64 entries each.  Verified exactly on sbaLib/spresistor and
+    rfExamples/portAdapter: dir + 20 + 24*used == len(table).
+    """
     if len(data) < 24:
         return None
-    marker = struct.unpack_from("<I", data, 0)[0]
+    d0 = struct.unpack_from(f"{bo}I", data, 0)[0]
+    if d0 + 20 > len(data):
+        return None
+    num_alloc = struct.unpack_from(f"{bo}I", data, d0 + 12)[0]
+    num_used = struct.unpack_from(f"{bo}I", data, d0 + 16)[0]
+    if num_used == 0 or num_used > 100000:
+        return None
+    base = d0 + 20
+    if base + 24 * num_used != len(data):
+        return None                      # exact fit is the strong signal
+    ids = list(struct.unpack_from(f"{bo}{num_used}Q", data, base))
+    offsets = list(struct.unpack_from(f"{bo}{num_used}Q", data, base + 8 * num_used))
+    sizes = list(struct.unpack_from(f"{bo}{num_used}Q", data, base + 16 * num_used))
+    header, members = {}, {}
+    for tid, off, size in zip(ids, offsets, sizes):
+        if off + size > len(data):
+            continue
+        chunk = data[off:off + size]
+        if tid in (1, 2, 3, 4):
+            if size >= 4:
+                header[tid] = struct.unpack_from(f"{bo}I", chunk, 0)[0]
+        else:
+            members[tid] = chunk
+    return BaseTable(4, d0, num_alloc, num_used, ids, offsets, sizes,
+                     header, members)
+
+
+def _parse_base_tbl_bo(data: bytes, bo: str) -> Optional[BaseTable]:
+    if len(data) < 24:
+        return None
+    marker = struct.unpack_from(f"{bo}I", data, 0)[0]
     if marker != 4:
         return None
-    toc_offset = struct.unpack_from("<Q", data, 8)[0]
-    num_alloc = struct.unpack_from("<I", data, 16)[0]
-    num_used = struct.unpack_from("<I", data, 20)[0]
+    toc_offset = struct.unpack_from(f"{bo}Q", data, 8)[0]
+    num_alloc = struct.unpack_from(f"{bo}I", data, 16)[0]
+    num_used = struct.unpack_from(f"{bo}I", data, 20)[0]
     if num_used == 0 or num_used > 100000:
         return None
     if 24 + 24 * num_used > len(data):
         return None
-    ids = list(struct.unpack_from(f"<{num_used}Q", data, 24))
-    offsets = list(struct.unpack_from(f"<{num_used}Q", data, 24 + 8 * num_used))
-    sizes = list(struct.unpack_from(f"<{num_used}Q", data, 24 + 16 * num_used))
+    ids = list(struct.unpack_from(f"{bo}{num_used}Q", data, 24))
+    offsets = list(struct.unpack_from(f"{bo}{num_used}Q", data, 24 + 8 * num_used))
+    sizes = list(struct.unpack_from(f"{bo}{num_used}Q", data, 24 + 16 * num_used))
 
     header: Dict[int, int] = {}
     members: Dict[int, bytes] = {}
@@ -339,7 +392,7 @@ def parse_base_tbl(data: bytes) -> Optional[BaseTable]:
         chunk = data[off:off + size]
         if tid in (1, 2, 3, 4):
             if size >= 4:
-                header[tid] = struct.unpack_from("<I", chunk, 0)[0]
+                header[tid] = struct.unpack_from(f"{bo}I", chunk, 0)[0]
         else:
             members[tid] = chunk
     return BaseTable(marker, toc_offset, num_alloc, num_used,
